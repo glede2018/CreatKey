@@ -1,0 +1,123 @@
+name: creatkey
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql://${POSTGRES_USER:-creatkey}:${POSTGRES_PASSWORD:-creatkey}@postgres:5432/${POSTGRES_DB:-creatkey}?schema=public
+  REDIS_URL: redis://redis:6379
+  PORT: 3000
+  FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+  PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:3000/api}
+  COOKIE_SECURE: ${COOKIE_SECURE:-false}
+  SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
+  SMS_PROVIDER: ${SMS_PROVIDER:-mock}
+  SMS_MASTER_CODE: ${SMS_MASTER_CODE:-888888}
+  SMS_CODE_PEPPER: ${SMS_CODE_PEPPER:-creatkey-dev-only}
+  SMS_API_URL: ${SMS_API_URL:-}
+  SMS_API_KEY: ${SMS_API_KEY:-}
+  SMS_TEMPLATE_ID: ${SMS_TEMPLATE_ID:-}
+  PAYMENT_MOCK: ${PAYMENT_MOCK:-true}
+  STORAGE_ENDPOINT: http://minio:9000
+  STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+  STORAGE_BUCKET: ${STORAGE_BUCKET:-creatkey}
+  STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-creatkey}
+  STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-creatkey-secret}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-creatkey}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-creatkey}
+      POSTGRES_DB: ${POSTGRES_DB:-creatkey}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-creatkey} -d ${POSTGRES_DB:-creatkey}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY:-creatkey}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY:-creatkey-secret}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+
+  migrate:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment: *backend-env
+    command:
+      ["npx", "prisma", "db", "push", "--schema", "backend/prisma/schema.prisma", "--skip-generate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment: *backend-env
+    ports:
+      - "${API_PORT:-3000}:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+  bullmq-worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    command: ["node", "backend/dist/worker.js"]
+    environment: *backend-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:

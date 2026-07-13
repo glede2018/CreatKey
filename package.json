@@ -1,0 +1,24 @@
+{
+  "name": "creatkey",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n frontend,api,worker -c cyan,magenta,yellow \"npm run dev -w frontend\" \"npm run start:dev -w backend\" \"npm run worker:dev -w backend\"",
+    "build": "npm run build -w frontend && npm run build -w backend",
+    "test": "npm run test -w backend",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:push": "npm run prisma:push -w backend",
+    "db:generate": "npm run prisma:generate -w backend",
+    "docker:up": "docker-compose up -d --build",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f api bullmq-worker"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "prettier": "^3.9.5"
+  }
+}

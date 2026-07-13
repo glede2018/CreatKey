@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+.docker-local
+.DS_Store
+coverage
+*.log
+frontend/.vite
+backend/generated
+uploads

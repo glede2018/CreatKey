@@ -1,0 +1,9 @@
+node_modules
+dist
+coverage
+backend/generated
+package-lock.json
+*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+
