@@ -7,6 +7,7 @@ import { BillingModule } from "./billing/billing.module";
 import { DatabaseModule } from "./database/database.module";
 import { ExecutionsModule } from "./executions/executions.module";
 import { PaymentsModule } from "./payments/payments.module";
+import { ManageModule } from "./manage/manage.module";
 import { WorkflowsModule } from "./workflows/workflows.module";
 
 /** 将 REDIS_URL 转换为 BullMQ/ioredis 使用的连接参数。 */
@@ -31,6 +32,7 @@ export function redisConnection(): RedisOptions {
     ExecutionsModule,
     WorkflowsModule,
     PaymentsModule,
+    ManageModule,
   ],
 })
 export class AppModule {}

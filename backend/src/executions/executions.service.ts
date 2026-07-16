@@ -19,7 +19,7 @@ const kindsByLabel: Record<string, string> = {
 const nodeKind = (node: any) =>
   node.data.config?.kind ?? kindsByLabel[node.data.label] ?? "utility.passthrough";
 
-/** 返回节点执行完成后应消耗的点数。 */
+/** 返回节点执行完成后应消耗的 Keys。 */
 const nodeCost = (kind: string) =>
   kind === "image.generate" ? 10 : kind === "transform.template" ? 1 : 0;
 
@@ -38,7 +38,7 @@ export class ExecutionsService {
     return parsed;
   }
 
-  /** 固化工作流版本、预冻结点数，并把所有入口节点加入执行队列。 */
+  /** 固化工作流版本、预冻结 Keys，并把所有入口节点加入执行队列。 */
   async start(workflowId: string, userId: string) {
     const workflow = await this.prisma.workflow.findFirst({
       where: { id: workflowId, ownerId: userId },
@@ -101,7 +101,7 @@ export class ExecutionsService {
     return run;
   }
 
-  /** 取消运行、标记未执行节点并释放全部冻结点数。 */
+  /** 取消运行、标记未执行节点并释放全部冻结 Keys。 */
   async cancel(id: string, userId: string) {
     const run = await this.get(id, userId);
     if (run.status !== RunStatus.PENDING && run.status !== RunStatus.RUNNING) return run;
@@ -217,7 +217,7 @@ export class ExecutionsService {
     return { value: inputs[0] ?? config };
   }
 
-  /** 在依赖全部成功后调度后继节点，并在全图结束时完成点数结算。 */
+  /** 在依赖全部成功后调度后继节点，并在全图结束时完成 Keys 结算。 */
   private async advance(runId: string, nodeKey: string, definition: WorkflowDefinition) {
     const successors = definition.edges
       .filter((edge) => edge.source === nodeKey)

@@ -6,5 +6,7 @@ dist
 coverage
 *.log
 frontend/.vite
+manage/.vite
+manage/*.tsbuildinfo
 backend/generated
 uploads

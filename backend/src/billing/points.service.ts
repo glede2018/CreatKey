@@ -6,12 +6,12 @@ import { PrismaService } from "../database/prisma.service";
 export class PointsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** 在执行工作流前预扣并冻结预计需要的点数。 */
+  /** 在执行工作流前预扣并冻结预计需要的 Keys。 */
   async reserve(userId: string, runId: string, amount: number) {
     if (amount <= 0) return;
     await this.prisma.$transaction(async (tx) => {
       const account = await tx.pointAccount.findUniqueOrThrow({ where: { userId } });
-      if (account.balance < amount) throw new BadRequestException(`点数不足，需要 ${amount} 点`);
+      if (account.balance < amount) throw new BadRequestException(`Keys 不足，需要 ${amount} Keys`);
       const updated = await tx.pointAccount.update({
         where: { userId },
         data: { balance: { decrement: amount }, frozen: { increment: amount } },
@@ -24,13 +24,13 @@ export class PointsService {
           amount: 0,
           balanceAfter: updated.balance,
           referenceId: runId,
-          description: `工作流预冻结 ${amount} 点`,
+          description: `工作流预冻结 ${amount} Keys`,
         },
       });
     });
   }
 
-  /** 根据实际消费结算冻结点数，并退回未使用部分。 */
+  /** 根据实际消费结算冻结 Keys，并退回未使用部分。 */
   async settle(runId: string, actual: number) {
     await this.prisma.$transaction(async (tx) => {
       const reservation = await tx.pointReservation.findUnique({ where: { runId } });
@@ -67,14 +67,14 @@ export class PointsService {
             amount: released,
             balanceAfter: updated.balance,
             referenceId: `${runId}:release`,
-            description: "释放未使用点数",
+            description: "释放未使用 Keys",
           },
         });
     });
   }
 
-  /** 幂等地把已支付订单对应的点数充入用户账户。 */
-  async recharge(userId: string, orderId: string, points: number) {
+  /** 幂等地把已支付订单对应的 Keys 充入用户账户。 */
+  async recharge(userId: string, orderId: string, keys: number) {
     await this.prisma.$transaction(async (tx) => {
       const exists = await tx.pointLedger.findUnique({
         where: { type_referenceId: { type: LedgerType.RECHARGE, referenceId: orderId } },
@@ -82,27 +82,27 @@ export class PointsService {
       if (exists) return;
       const updated = await tx.pointAccount.update({
         where: { userId },
-        data: { balance: { increment: points } },
+        data: { balance: { increment: keys } },
       });
       await tx.pointLedger.create({
         data: {
           userId,
           type: LedgerType.RECHARGE,
-          amount: points,
+          amount: keys,
           balanceAfter: updated.balance,
           referenceId: orderId,
-          description: "充值到账",
+          description: "Keys 充值到账",
         },
       });
     });
   }
 
-  /** 获取指定用户的点数账户。 */
+  /** 获取指定用户的 Keys 账户。 */
   account(userId: string) {
     return this.prisma.pointAccount.findUniqueOrThrow({ where: { userId } });
   }
 
-  /** 获取指定用户最近 100 条点数流水。 */
+  /** 获取指定用户最近 100 条 Keys 流水。 */
   ledger(userId: string) {
     return this.prisma.pointLedger.findMany({
       where: { userId },

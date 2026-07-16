@@ -47,12 +47,14 @@ export class AuthService {
       nickname: user.nickname,
       avatarUrl: user.avatarUrl,
       roles: user.roles,
-      points: user.pointAccount?.balance ?? 0,
+      profileInitialized: user.profileInitialized ?? user.roles.length > 0,
+      phone: user.phone,
+      keys: user.pointAccount?.balance ?? 0,
     };
   }
 
   /** 创建一次性短信验证码，并执行 60 秒冷却与每小时频率限制。 */
-  async sendCode(input: { countryCode?: string; phone?: string; role?: Role }) {
+  async sendCode(input: { countryCode?: string; phone?: string }) {
     const identity = this.normalize(input.countryCode, input.phone);
     const now = new Date();
     const latest = await this.prisma.smsVerificationCode.findFirst({
@@ -70,7 +72,7 @@ export class AuthService {
     await this.prisma.smsVerificationCode.create({
       data: {
         ...identity,
-        role: this.role(input.role),
+        role: Role.CREATOR,
         codeHash: this.hash(code),
         expiresAt: new Date(now.getTime() + 5 * 60_000),
       },
@@ -80,7 +82,7 @@ export class AuthService {
   }
 
   /** 校验短信码、原子消费验证码，并登录或注册对应手机号用户。 */
-  async verifyCode(input: { countryCode?: string; phone?: string; code?: string; role?: Role }) {
+  async verifyCode(input: { countryCode?: string; phone?: string; code?: string }) {
     const identity = this.normalize(input.countryCode, input.phone);
     const code = (input.code ?? "").trim();
     if (!/^\d{6}$/.test(code)) throw new BadRequestException("验证码必须是 6 位数字");
@@ -110,19 +112,17 @@ export class AuthService {
       });
       if (!consumed.count) throw new UnauthorizedException("验证码已使用");
       const existing = await tx.user.findUnique({ where: { phone: identity.phone } });
-      const selectedRole = this.role(input.role ?? record.role);
-      const roles = Array.from(new Set([...(existing?.roles ?? []), selectedRole]));
       if (existing)
-        return tx.user.update({
+        return tx.user.findUniqueOrThrow({
           where: { id: existing.id },
-          data: { roles },
           include: { pointAccount: true },
         });
       return tx.user.create({
         data: {
           ...identity,
           nickname: `用户${identity.phone.slice(-4)}`,
-          roles,
+          roles: [],
+          profileInitialized: false,
           pointAccount: { create: { balance: 100 } },
         },
         include: { pointAccount: true },
@@ -130,6 +130,34 @@ export class AuthService {
     });
     const session = await this.issueSession(user.id);
     return { ...session, user: this.userView(user) };
+  }
+
+  /** 完成首次登录资料初始化；用户名、角色和头像均为必填项。 */
+  async initializeProfile(
+    userId: string,
+    input: { nickname?: string; role?: Role; avatarUrl?: string | null },
+  ) {
+    const nickname = input.nickname?.trim();
+    if (!nickname || nickname.length < 2 || nickname.length > 20)
+      throw new BadRequestException("用户名请输入 2-20 个字符");
+    if (!Object.values(Role).includes(input.role as Role))
+      throw new BadRequestException("请选择有效的用户角色");
+    const avatarUrl = input.avatarUrl?.trim();
+    if (!avatarUrl) throw new BadRequestException("请上传头像");
+    const match = avatarUrl.match(/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/);
+    if (!match) throw new BadRequestException("头像仅支持 PNG、JPG 或 WebP 图片");
+    if (match[2].length > 2_800_000) throw new BadRequestException("头像大小不能超过 2MB");
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        nickname,
+        avatarUrl,
+        roles: [this.role(input.role)],
+        profileInitialized: true,
+      },
+      include: { pointAccount: true },
+    });
+    return this.userView(user);
   }
 
   /** 创建唯一会话；递增会话版本并删除旧会话以保证单点登录。 */

@@ -3,19 +3,22 @@
   "private": true,
   "workspaces": [
     "frontend",
+    "manage",
     "backend"
   ],
   "scripts": {
-    "dev": "concurrently -n frontend,api,worker -c cyan,magenta,yellow \"npm run dev -w frontend\" \"npm run start:dev -w backend\" \"npm run worker:dev -w backend\"",
-    "build": "npm run build -w frontend && npm run build -w backend",
+    "dev": "concurrently -n frontend,manage,api,worker -c cyan,blue,magenta,yellow \"npm run dev -w frontend\" \"npm run dev -w manage\" \"npm run start:dev -w backend\" \"npm run worker:dev -w backend\"",
+    "build": "npm run build -w frontend && npm run build -w manage && npm run build -w backend",
     "test": "npm run test -w backend",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:push": "npm run prisma:push -w backend",
     "db:generate": "npm run prisma:generate -w backend",
-    "docker:up": "docker-compose up -d --build",
-    "docker:down": "docker-compose down",
-    "docker:logs": "docker-compose logs -f api bullmq-worker"
+    "docker:up": "sh ./scripts/docker-compose.sh up -d --build --remove-orphans",
+    "docker:refresh": "sh ./scripts/docker-compose.sh up -d --build --force-recreate --remove-orphans migrate api bullmq-worker frontend manage",
+    "docker:down": "sh ./scripts/docker-compose.sh down",
+    "docker:ps": "sh ./scripts/docker-compose.sh ps -a",
+    "docker:logs": "sh ./scripts/docker-compose.sh logs -f api bullmq-worker"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

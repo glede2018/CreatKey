@@ -1,67 +1,1055 @@
 @import "tailwindcss";
+
 @theme {
   --font-sans: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
 }
+
+:root {
+  color-scheme: dark;
+  --ck-font-sans: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --ck-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --ck-bg: #000;
+  --ck-bg-soft: #080808;
+  --ck-surface-deep: #111;
+  --ck-surface: #2b2b2b;
+  --ck-surface-soft: #252525;
+  --ck-surface-raised: #3a3a3a;
+  --ck-surface-control: #505050;
+  --ck-surface-hover: #363636;
+  --ck-overlay: rgba(0, 0, 0, 0.75);
+  --ck-overlay-soft: rgba(0, 0, 0, 0.5);
+  --ck-text: #fff;
+  --ck-text-strong: #f4f4f5;
+  --ck-text-secondary: #d4d4d8;
+  --ck-text-muted: #a1a1aa;
+  --ck-text-subtle: #71717a;
+  --ck-text-faint: #52525b;
+  --ck-primary: #3182ff;
+  --ck-primary-hover: #2875ec;
+  --ck-primary-soft: rgba(49, 130, 255, 0.16);
+  --ck-cyan: #00c7c7;
+  --ck-violet: #7177ff;
+  --ck-yellow: #ffd400;
+  --ck-success: #34d399;
+  --ck-success-soft: rgba(52, 211, 153, 0.15);
+  --ck-danger: #f87171;
+  --ck-danger-soft: rgba(248, 113, 113, 0.12);
+  --ck-border: rgba(255, 255, 255, 0.1);
+  --ck-border-soft: rgba(255, 255, 255, 0.07);
+  --ck-border-strong: rgba(255, 255, 255, 0.25);
+  --ck-hover: rgba(255, 255, 255, 0.08);
+  --ck-focus: rgba(49, 130, 255, 0.28);
+  --ck-canvas-dot: #343434;
+  --ck-shadow: 0 10px 30px rgba(0, 0, 0, 0.32);
+  --ck-shadow-float: 0 8px 24px rgba(0, 0, 0, 0.38);
+}
+
 * {
   box-sizing: border-box;
 }
+
 html,
 body,
 #root {
   min-height: 100%;
   margin: 0;
-  background: #080808;
+  background: var(--ck-bg);
 }
+
 body {
-  font-family: var(--font-sans);
+  color: var(--ck-text);
+  font-family: var(--ck-font-sans);
   -webkit-font-smoothing: antialiased;
 }
+
 button,
 input {
   font: inherit;
 }
+
+.ck-app {
+  background: var(--ck-bg);
+  color: var(--ck-text);
+}
+
+.ck-app-loading {
+  background: var(--ck-bg-soft);
+  color: var(--ck-text-faint);
+  font-size: 12px;
+  letter-spacing: 0.3em;
+}
+
+.ck-surface {
+  background: var(--ck-surface);
+}
+
+.ck-surface-deep {
+  background: var(--ck-surface-deep);
+}
+
+.ck-surface-soft {
+  background: var(--ck-surface-soft);
+}
+
+.ck-surface-raised {
+  background: var(--ck-surface-raised);
+}
+
+.ck-surface-control {
+  background: var(--ck-surface-control);
+}
+
+.ck-border {
+  border-color: var(--ck-border);
+}
+
+.ck-border-soft {
+  border-color: var(--ck-border-soft);
+}
+
+.ck-text-primary {
+  color: var(--ck-text);
+}
+
+.ck-text-strong {
+  color: var(--ck-text-strong);
+}
+
+.ck-text-secondary {
+  color: var(--ck-text-secondary);
+}
+
+.ck-text-muted {
+  color: var(--ck-text-muted);
+}
+
+.ck-text-subtle {
+  color: var(--ck-text-subtle);
+}
+
+.ck-text-faint {
+  color: var(--ck-text-faint);
+}
+
+.ck-text-accent {
+  color: var(--ck-primary);
+}
+
+.ck-type-10 {
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.ck-type-11 {
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.ck-type-12 {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ck-type-13 {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ck-type-14 {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.ck-type-18 {
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.ck-type-24 {
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.ck-medium {
+  font-weight: 500;
+}
+
+.ck-semibold {
+  font-weight: 600;
+}
+
+.ck-mono {
+  font-family: var(--ck-font-mono);
+}
+
+.ck-hover-surface:hover {
+  background: var(--ck-hover);
+  color: var(--ck-text);
+}
+
+.ck-figma-icon {
+  background-color: currentColor;
+}
+
+.ck-button {
+  color: var(--ck-text-strong);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.ck-button:focus-visible {
+  box-shadow: 0 0 0 2px var(--ck-focus);
+}
+
+.ck-button-primary {
+  background: var(--ck-primary);
+  color: var(--ck-text);
+}
+
+.ck-button-primary:hover {
+  background: var(--ck-primary-hover);
+}
+
+.ck-button-secondary {
+  border-color: var(--ck-border);
+  background: var(--ck-hover);
+  color: var(--ck-text-strong);
+}
+
+.ck-button-secondary:hover,
+.ck-button-ghost:hover {
+  background: var(--ck-hover);
+  color: var(--ck-text);
+}
+
+.ck-button-ghost {
+  color: var(--ck-text-muted);
+}
+
+.ck-button-danger {
+  background: var(--ck-danger-soft);
+  color: var(--ck-danger);
+}
+
+.ck-button-danger:hover {
+  background: rgba(248, 113, 113, 0.2);
+}
+
+.ck-button-sm {
+  font-size: 12px;
+}
+
+.ck-input {
+  border-color: var(--ck-border);
+  background: var(--ck-surface-deep);
+  color: var(--ck-text);
+  font-size: 14px;
+}
+
+.ck-input::placeholder {
+  color: var(--ck-text-faint);
+}
+
+.ck-input:focus {
+  border-color: var(--ck-primary);
+  box-shadow: 0 0 0 2px var(--ck-focus);
+}
+
+.ck-card {
+  border-color: var(--ck-border-soft);
+  background: var(--ck-surface-deep);
+}
+
+.ck-badge {
+  border-color: var(--ck-border);
+  background: var(--ck-hover);
+  color: var(--ck-text-muted);
+  font-size: 11px;
+}
+
 .login-grid {
+  display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(440px, 0.75fr);
 }
-.noise {
+
+.login-page {
+  background: var(--ck-bg);
+  color: var(--ck-text);
+}
+
+.login-visual {
+  border-color: var(--ck-border-soft);
+}
+
+.login-noise {
   background-image:
-    radial-gradient(circle at 15% 25%, rgba(255, 255, 255, 0.09), transparent 28%),
-    radial-gradient(circle at 75% 75%, rgba(255, 255, 255, 0.05), transparent 25%),
+    radial-gradient(circle at 15% 25%, rgba(49, 130, 255, 0.12), transparent 28%),
+    radial-gradient(circle at 75% 75%, rgba(0, 199, 199, 0.07), transparent 25%),
     linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.025) 50%, transparent 70%);
 }
+
+.login-brand {
+  color: var(--ck-text);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.login-brand-mark {
+  background: var(--ck-surface);
+  color: var(--ck-primary);
+}
+
+.login-eyebrow {
+  color: var(--ck-primary);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+}
+
+.login-title {
+  color: var(--ck-text);
+  font-size: clamp(42px, 4.2vw, 60px);
+  font-weight: 500;
+  letter-spacing: -0.045em;
+  line-height: 1.05;
+}
+
+.login-title-muted,
+.login-copy,
+.login-subtitle,
+.login-footer {
+  color: var(--ck-text-subtle);
+}
+
+.login-copy {
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.login-meta {
+  color: var(--ck-text-faint);
+  font-size: 11px;
+}
+
+.login-card {
+  border-color: var(--ck-border);
+  background: var(--ck-surface-deep);
+  box-shadow: var(--ck-shadow-float);
+}
+
+.login-subtitle,
+.login-prefix,
+.login-qr-copy {
+  font-size: 14px;
+}
+
+.login-field-icon {
+  color: var(--ck-text-faint);
+}
+
+.login-prefix {
+  border-color: var(--ck-border);
+  color: var(--ck-text-secondary);
+}
+
+.login-send-code {
+  color: var(--ck-text-secondary);
+  font-size: 12px;
+}
+
+.login-send-code:hover {
+  background: var(--ck-hover);
+  color: var(--ck-text);
+}
+
+.login-send-code:disabled {
+  color: var(--ck-text-faint);
+}
+
+.login-error {
+  border-color: rgba(248, 113, 113, 0.2);
+  background: var(--ck-danger-soft);
+  color: var(--ck-danger);
+  font-size: 12px;
+}
+
+.login-dev-note,
+.login-footer {
+  font-size: 12px;
+}
+
+.ck-onboarding-backdrop {
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(10px);
+}
+
+.ck-onboarding-card {
+  border-color: var(--ck-border);
+  background: var(--ck-surface-deep);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.62);
+}
+
+.ck-onboarding-header {
+  border-color: var(--ck-border-soft);
+  background:
+    radial-gradient(circle at 92% 18%, rgba(49, 130, 255, 0.18), transparent 34%), #151515;
+}
+
+.ck-onboarding-mark,
+.ck-role-icon {
+  background: var(--ck-primary-soft);
+  color: var(--ck-primary);
+}
+
+.ck-onboarding-step {
+  color: var(--ck-primary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+}
+
+.ck-onboarding-copy,
+.ck-onboarding-help,
+.ck-onboarding-input-icon {
+  color: var(--ck-text-subtle);
+}
+
+.ck-required {
+  color: var(--ck-danger);
+}
+
+.ck-avatar-upload,
+.ck-role-option {
+  border-color: var(--ck-border);
+  background: var(--ck-bg-soft);
+  color: var(--ck-text-muted);
+}
+
+.ck-avatar-upload:hover,
+.ck-role-option:hover {
+  border-color: var(--ck-border-strong);
+  color: var(--ck-text);
+}
+
+.ck-avatar-upload span {
+  background: rgba(0, 0, 0, 0.72);
+  color: var(--ck-text);
+  font-size: 10px;
+}
+
+.ck-role-option.is-active {
+  border-color: var(--ck-primary);
+  background: var(--ck-primary-soft);
+  color: var(--ck-text);
+  box-shadow: 0 0 0 2px var(--ck-focus);
+}
+
+.login-dev-code {
+  color: var(--ck-text-muted);
+  font-family: var(--ck-font-mono);
+}
+
+.ck-brand {
+  color: var(--ck-text);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.ck-brand-dot-primary {
+  background: var(--ck-primary);
+}
+
+.ck-brand-dot-secondary {
+  background: var(--ck-yellow);
+}
+
+.ck-avatar,
+.ck-header-select,
+.ck-plan-button,
+.ck-workflow-card,
+.ck-workflow-new,
+.ck-menu {
+  background: var(--ck-surface);
+}
+
+.ck-avatar,
+.ck-header-role,
+.ck-plan-value,
+.ck-workflow-new,
+.ck-menu-item {
+  color: var(--ck-text);
+}
+
+.ck-header-divider {
+  background: var(--ck-border-strong);
+}
+
+.ck-header-role,
+.ck-header-select,
+.ck-plan-button,
+.ck-workflow-new {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.ck-header-select {
+  color: var(--ck-text-strong);
+}
+
+.ck-header-select:hover,
+.ck-plan-button:hover,
+.ck-workflow-card:hover,
+.ck-workflow-new:hover {
+  background: var(--ck-surface-hover);
+}
+
+.ck-plan-button {
+  color: var(--ck-text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.ck-plan-value {
+  background: rgba(255, 255, 255, 0.15);
+  font-weight: 600;
+}
+
+.ck-icon-button {
+  color: var(--ck-text-muted);
+}
+
+.ck-icon-button:hover,
+.ck-menu-item:hover {
+  background: var(--ck-hover);
+  color: var(--ck-text);
+}
+
+.ck-menu {
+  border-color: var(--ck-border);
+  box-shadow: var(--ck-shadow-float);
+}
+
+.ck-menu-item,
+.ck-loading,
+.ck-workflow-date,
+.ck-workflow-open {
+  font-size: 12px;
+}
+
+.ck-menu-item {
+  color: var(--ck-text-secondary);
+}
+
+.ck-loading,
+.ck-workflow-date {
+  color: var(--ck-text-faint);
+}
+
+.ck-workflow-card,
+.ck-workflow-new {
+  color: var(--ck-text-strong);
+}
+
+.ck-workflow-open {
+  background: var(--ck-overlay-soft);
+  color: var(--ck-text);
+}
+
+.ck-workflow-cover-frame {
+  background: var(--ck-surface-raised);
+}
+
+.ck-workflow-title {
+  color: var(--ck-text);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.ck-workflow-more {
+  color: var(--ck-text-muted);
+}
+
+.ck-sidebar-meta {
+  color: var(--ck-text-faint);
+  font-size: 11px;
+}
+
+.ck-sidebar-contact {
+  border-color: var(--ck-text-faint);
+}
+
+.ck-sidebar-language:hover {
+  color: var(--ck-text);
+}
+
+.ck-nav-item {
+  color: var(--ck-text-muted);
+  font-size: 14px;
+}
+
+.ck-nav-item:hover {
+  background: var(--ck-hover);
+  color: var(--ck-text);
+}
+
+.ck-nav-item.is-active {
+  background: var(--ck-surface);
+  color: var(--ck-text);
+}
+
+.ck-nav-item.is-active .ck-nav-icon {
+  color: var(--ck-primary);
+}
+
+.ck-editor-shell,
+.ck-editor-canvas {
+  background: var(--ck-bg);
+  color: var(--ck-text);
+}
+
+.ck-editor-titlebar,
+.ck-editor-status,
+.ck-editor-input {
+  background: rgba(32, 32, 32, 0.95);
+}
+
+.ck-editor-titlebar,
+.ck-editor-actions,
+.ck-editor-toolrail,
+.ck-editor-library,
+.ck-editor-panel,
+.ck-editor-status {
+  box-shadow: var(--ck-shadow-float);
+}
+
+.ck-editor-home,
+.ck-editor-tool-button,
+.ck-editor-close {
+  color: var(--ck-text-secondary);
+}
+
+.ck-editor-home:hover,
+.ck-editor-tool-button:hover,
+.ck-editor-close:hover,
+.ck-editor-library-item:hover {
+  background: var(--ck-hover);
+  color: var(--ck-text);
+}
+
+.ck-editor-separator {
+  background: var(--ck-border);
+}
+
+.ck-editor-input {
+  color: var(--ck-text);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.ck-editor-caption,
+.ck-editor-node-id {
+  color: var(--ck-text-faint);
+  font-size: 10px;
+}
+
+.ck-editor-points {
+  color: var(--ck-text-strong);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ck-editor-points-icon {
+  color: var(--ck-cyan);
+}
+
+.ck-editor-actions {
+  background: rgba(58, 58, 58, 0.95);
+}
+
+.ck-editor-action {
+  background: var(--ck-surface-control);
+}
+
+.ck-editor-action-primary {
+  background: var(--ck-primary);
+  color: var(--ck-text);
+}
+
+.ck-editor-action-primary:hover {
+  background: var(--ck-primary-hover);
+}
+
+.ck-editor-toolrail,
+.ck-editor-library {
+  border-color: var(--ck-border-soft);
+  background: var(--ck-surface);
+}
+
+.ck-editor-tool-button.is-active {
+  background: var(--ck-hover);
+  color: var(--ck-text);
+}
+
+.ck-editor-library-title,
+.ck-editor-library-item,
+.ck-editor-panel-title {
+  color: var(--ck-text-strong);
+}
+
+.ck-editor-library-title,
+.ck-editor-library-item {
+  font-size: 12px;
+}
+
+.ck-editor-panel {
+  border-color: var(--ck-border);
+  background: rgba(43, 43, 43, 0.95);
+}
+
+.ck-editor-panel-icon {
+  background: var(--ck-surface-raised);
+  color: var(--ck-text-secondary);
+}
+
+.ck-editor-panel-title {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.ck-editor-field-label,
+.ck-editor-state {
+  color: var(--ck-text-muted);
+  font-size: 11px;
+}
+
+.ck-editor-state {
+  border-color: var(--ck-border-soft);
+}
+
+.ck-editor-status {
+  border-color: var(--ck-border);
+  color: var(--ck-text-secondary);
+  font-size: 12px;
+}
+
+.ck-status-dot-success {
+  background: var(--ck-success);
+}
+
+.ck-status-dot-error {
+  background: var(--ck-danger);
+}
+
+.ck-status-dot-running {
+  background: var(--ck-primary);
+}
+
+.ck-node-card {
+  border-color: var(--ck-border-soft);
+  background: var(--ck-surface);
+  box-shadow: var(--ck-shadow);
+}
+
+.ck-node-card.is-selected {
+  border-color: var(--ck-primary);
+  box-shadow: 0 0 0 1px var(--ck-primary-soft);
+}
+
+.ck-node-target {
+  background: var(--ck-violet) !important;
+}
+
+.ck-node-source {
+  background: var(--ck-cyan) !important;
+}
+
+.ck-node-title {
+  color: var(--ck-text-strong);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ck-node-icon,
+.ck-node-chevron {
+  color: var(--ck-text-secondary);
+}
+
+.ck-node-body {
+  border-color: var(--ck-border-soft);
+  background: var(--ck-surface-soft);
+  color: var(--ck-text-faint);
+  font-size: 11px;
+  line-height: 1.8;
+}
+
+.ck-node-result {
+  color: var(--ck-text-faint);
+  font-size: 10px;
+}
+
+.ck-node-running {
+  color: var(--ck-primary);
+}
+
+.ck-node-add {
+  border-color: var(--ck-border);
+  background: var(--ck-surface-raised);
+  color: var(--ck-text-muted);
+}
+
+.ck-node-add:hover {
+  color: var(--ck-text);
+}
+
+.ck-dialog-backdrop {
+  background: var(--ck-overlay);
+}
+
+.ck-dialog {
+  border-color: var(--ck-border);
+  background: var(--ck-surface-deep);
+  box-shadow: var(--ck-shadow-float);
+}
+
+.ck-dialog-title {
+  color: var(--ck-text);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.ck-dialog-copy,
+.ck-dialog-price,
+.ck-dialog-close {
+  color: var(--ck-text-subtle);
+}
+
+.ck-dialog-copy,
+.ck-dialog-payment,
+.ck-dialog-qr-copy {
+  font-size: 12px;
+}
+
+.ck-dialog-pack,
+.ck-dialog-payment {
+  border-color: var(--ck-border-soft);
+}
+
+.ck-dialog-pack {
+  background: var(--ck-bg-soft);
+}
+
+.ck-dialog-pack.is-active,
+.ck-dialog-payment.is-active {
+  border-color: var(--ck-primary);
+  background: var(--ck-primary-soft);
+  color: var(--ck-text);
+}
+
+.ck-dialog-points {
+  color: var(--ck-text);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.ck-dialog-payment {
+  color: var(--ck-text-subtle);
+  font-size: 14px;
+}
+
+.ck-dialog-success {
+  background: var(--ck-success-soft);
+  color: var(--ck-success);
+}
+
+.ck-dialog-success-title {
+  color: var(--ck-text);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.ck-dialog-qr {
+  background: var(--ck-text);
+}
+
+.ck-dialog-qr-copy {
+  color: var(--ck-text-secondary);
+  font-size: 14px;
+}
+
+.ck-dialog-dismiss {
+  color: var(--ck-text-subtle);
+}
+
+.ck-dialog-dismiss:hover {
+  background: var(--ck-hover);
+  color: var(--ck-text);
+}
+
+.ck-pricing {
+  background:
+    radial-gradient(circle at 50% -10%, rgba(49, 130, 255, 0.12), transparent 35%), var(--ck-bg);
+}
+
+.ck-pricing-kicker {
+  border-color: rgba(49, 130, 255, 0.3);
+  background: var(--ck-primary-soft);
+  color: #7cb1ff;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+
+.ck-pricing-title {
+  color: var(--ck-text);
+  font-size: clamp(28px, 4vw, 42px);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+}
+
+.ck-pricing-copy,
+.ck-pricing-balance,
+.ck-pricing-empty {
+  color: var(--ck-text-subtle);
+}
+
+.ck-pricing-copy {
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+.ck-pricing-card,
+.ck-pricing-checkout,
+.ck-pricing-order {
+  border-color: var(--ck-border);
+  background: rgba(17, 17, 17, 0.88);
+}
+
+.ck-pricing-card:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+}
+
+.ck-pricing-card.is-active {
+  border-color: var(--ck-primary);
+  background: linear-gradient(145deg, rgba(49, 130, 255, 0.17), rgba(17, 17, 17, 0.94));
+  box-shadow: 0 0 0 1px rgba(49, 130, 255, 0.15);
+}
+
+.ck-pricing-pack-name,
+.ck-pricing-choice,
+.ck-pricing-amount {
+  color: var(--ck-text-muted);
+  font-size: 12px;
+}
+
+.ck-pricing-keys {
+  color: var(--ck-text);
+  font-size: 28px;
+  letter-spacing: -0.03em;
+}
+
+.ck-pricing-keys small {
+  color: var(--ck-text-subtle);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.ck-pricing-choice i {
+  border-color: var(--ck-border-strong);
+}
+
+.ck-pricing-card.is-active .ck-pricing-choice,
+.ck-pricing-card.is-active .ck-pricing-choice i {
+  border-color: var(--ck-primary);
+  color: #78adff;
+}
+
+.ck-wechat-icon {
+  background: rgba(34, 197, 94, 0.11);
+}
+
+.ck-payment-details {
+  border-color: var(--ck-border-soft);
+  color: var(--ck-text-subtle);
+  font-size: 12px;
+}
+
+.ck-payment-details > div {
+  border-color: var(--ck-border-soft);
+}
+
+.ck-payment-details dd {
+  color: var(--ck-text-secondary);
+  font-weight: 500;
+  text-align: right;
+}
+
+.ck-payment-details .ck-payment-money {
+  color: var(--ck-text);
+  font-size: 15px;
+}
+
 .react-flow__edge-path {
-  stroke: #555;
+  stroke: var(--ck-text-faint);
   stroke-width: 1.5;
 }
+
 .react-flow__edge.animated path {
   stroke-dasharray: 5;
   animation-duration: 1.2s;
 }
+
 .react-flow__selection {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid var(--ck-border-strong);
+  background: var(--ck-hover);
 }
-.dark-controls {
+
+.figma-controls {
+  left: 8px !important;
+  bottom: 8px !important;
+  display: flex !important;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid var(--ck-border) !important;
   border-radius: 10px !important;
-  box-shadow: none !important;
+  background: var(--ck-surface) !important;
+  box-shadow: var(--ck-shadow-float) !important;
 }
-.dark-controls button {
+
+.figma-controls button {
   border: 0 !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
-  background: #151515 !important;
-  fill: #777 !important;
+  border-right: 1px solid var(--ck-border-soft) !important;
+  background: var(--ck-surface) !important;
+  fill: var(--ck-text-muted) !important;
 }
-.dark-controls button:hover {
-  background: #202020 !important;
-  fill: white !important;
+
+.figma-controls button:hover {
+  background: var(--ck-surface-raised) !important;
+  fill: var(--ck-text) !important;
 }
-.dark-minimap {
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  background: #111 !important;
+
+.workflow-cover {
+  background:
+    radial-gradient(circle at 20% 30%, rgba(49, 130, 255, 0.45), transparent 24%),
+    radial-gradient(circle at 76% 65%, rgba(0, 199, 199, 0.32), transparent 28%),
+    linear-gradient(135deg, #171717, #363636);
 }
+
+.workflow-cover-1 {
+  background:
+    linear-gradient(120deg, transparent 46%, rgba(255, 255, 255, 0.13) 47%, transparent 49%),
+    radial-gradient(circle at 65% 45%, rgba(255, 212, 0, 0.28), transparent 22%), #202020;
+}
+
+.workflow-cover-2 {
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0 1px, transparent 1px 18px),
+    linear-gradient(145deg, #242424, #3b3b3b);
+}
+
 @media (max-width: 1024px) {
   .login-grid {
     grid-template-columns: 1fr;

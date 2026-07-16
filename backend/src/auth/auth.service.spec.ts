@@ -36,3 +36,43 @@ describe("mainland China mobile validation", () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
+
+describe("profile initialization", () => {
+  it("stores the selected role and marks the profile initialized", async () => {
+    const prisma: any = {
+      user: {
+        update: async ({ data }: any) => ({
+          id: "user-1",
+          ...data,
+          pointAccount: { balance: 100 },
+        }),
+      },
+    };
+    const result = await new AuthService(
+      prisma,
+      { get: (_key: string, fallback: unknown) => fallback } as any,
+      {} as any,
+    ).initializeProfile("user-1", {
+      nickname: "星河",
+      role: "CREATOR" as any,
+      avatarUrl: "data:image/png;base64,iVBORw0KGgo=",
+    });
+    expect(result).toMatchObject({
+      nickname: "星河",
+      roles: ["CREATOR"],
+      profileInitialized: true,
+    });
+  });
+
+  it("rejects invalid profile input before writing", async () => {
+    await expect(
+      service.initializeProfile("user-1", { nickname: "A", role: "UNKNOWN" as any }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("requires an avatar", async () => {
+    await expect(
+      service.initializeProfile("user-1", { nickname: "星河", role: "CREATOR" as any }),
+    ).rejects.toMatchObject({ message: "请上传头像" });
+  });
+});

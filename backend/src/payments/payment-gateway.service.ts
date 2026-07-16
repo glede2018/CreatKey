@@ -32,6 +32,12 @@ export class PaymentGatewayService {
     return channel === PaymentChannel.WECHAT ? this.createWechat(order) : this.createAlipay(order);
   }
 
+  /** 关闭仍待支付的第三方订单；模拟模式无需访问支付平台。 */
+  async cancel(channel: PaymentChannel, orderNo: string) {
+    if (this.isMock()) return;
+    if (channel === PaymentChannel.WECHAT) await this.closeWechat(orderNo);
+  }
+
   /** 从环境变量读取并解析支付平台 RSA 私钥。 */
   private privateKey(name: string) {
     return createPrivateKey(this.config.getOrThrow<string>(name).replaceAll("\\n", "\n"));
@@ -71,6 +77,34 @@ export class PaymentGatewayService {
     if (!response.ok || !result.code_url)
       throw new BadGatewayException(result.message ?? "微信支付下单失败");
     return result.code_url;
+  }
+
+  /** 调用微信支付关单接口，确保用户取消后二维码不可继续付款。 */
+  private async closeWechat(orderNo: string) {
+    const mchid = this.config.getOrThrow<string>("WECHAT_PAY_MCH_ID");
+    const serial = this.config.getOrThrow<string>("WECHAT_PAY_SERIAL_NO");
+    const path = `/v3/pay/transactions/out-trade-no/${encodeURIComponent(orderNo)}/close`;
+    const body = JSON.stringify({ mchid });
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const nonce = randomBytes(16).toString("hex");
+    const signer = createSign("RSA-SHA256");
+    signer.update(`POST\n${path}\n${timestamp}\n${nonce}\n${body}\n`);
+    const signature = signer.sign(this.privateKey("WECHAT_PAY_PRIVATE_KEY"), "base64");
+    const authorization = `WECHATPAY2-SHA256-RSA2048 mchid="${mchid}",nonce_str="${nonce}",timestamp="${timestamp}",serial_no="${serial}",signature="${signature}"`;
+    const response = await fetch(`https://api.mch.weixin.qq.com${path}`, {
+      method: "POST",
+      headers: {
+        Authorization: authorization,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": "CreatKey/1.0",
+      },
+      body,
+    });
+    if (!response.ok) {
+      const result: any = await response.json().catch(() => ({}));
+      throw new BadGatewayException(result.message ?? "微信支付关单失败");
+    }
   }
 
   /** 调用支付宝当面付预下单接口。 */

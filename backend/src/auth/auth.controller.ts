@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req, Res, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Patch, Post, Req, Res, UseGuards } from "@nestjs/common";
 import type { Response } from "express";
 import { AuthGuard } from "./auth.guard";
 import { AuthService } from "./auth.service";
@@ -37,6 +37,14 @@ export class AuthController {
   /** 返回当前登录用户信息。 */
   @Get("me") @UseGuards(AuthGuard) me(@CurrentUser() user: AuthUser) {
     return user;
+  }
+
+  /** 保存首次登录时填写的用户名、角色与头像。 */
+  @Patch("profile") @UseGuards(AuthGuard) initializeProfile(
+    @CurrentUser() user: AuthUser,
+    @Body() body: any,
+  ) {
+    return this.auth.initializeProfile(user.id, body);
   }
 
   /** 注销当前设备的登录会话并清理 Cookie。 */

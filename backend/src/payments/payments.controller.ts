@@ -10,7 +10,12 @@ import { PaymentsService } from "./payments.service";
 export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}
 
-  /** 创建微信或支付宝扫码充值订单。 */
+  /** 返回当前可购买的 Keys 套餐。 */
+  @Get("packages") packages() {
+    return this.payments.packages();
+  }
+
+  /** 创建微信扫码充值订单。 */
   @Post("orders") @UseGuards(AuthGuard) create(@CurrentUser() user: AuthUser, @Body() body: any) {
     return this.payments.create(user.id, body);
   }
@@ -29,6 +34,14 @@ export class PaymentsController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.payments.devConfirm(id, user.id);
+  }
+
+  /** 用户关闭支付弹窗时取消并关闭待支付订单。 */
+  @Post("orders/:id/cancel") @UseGuards(AuthGuard) cancel(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.payments.cancel(id, user.id);
   }
 
   /** 验证支付宝异步通知并完成充值。 */

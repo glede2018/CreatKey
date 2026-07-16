@@ -5,6 +5,7 @@ ARG PRISMA_ENGINES_MIRROR=https://npmmirror.com/mirrors/prisma
 ENV PRISMA_ENGINES_MIRROR=${PRISMA_ENGINES_MIRROR}
 COPY package.json package-lock.json ./
 COPY frontend/package.json ./frontend/package.json
+COPY manage/package.json ./manage/package.json
 COPY backend/package.json ./backend/package.json
 RUN npm config set registry ${NPM_REGISTRY} \
     && npm config set fetch-retries 8 \

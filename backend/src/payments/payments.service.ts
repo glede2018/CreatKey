@@ -5,11 +5,11 @@ import QRCode from "qrcode";
 import { PrismaService } from "../database/prisma.service";
 import { PaymentGatewayService } from "./payment-gateway.service";
 
-const packs = new Map([
-  [100, 1000],
-  [550, 5000],
-  [1200, 10000],
-]);
+const defaultPackages = [
+  { code: "starter", name: "轻量包", keys: 100, amountFen: 1000, sortOrder: 10 },
+  { code: "popular", name: "常用包", keys: 550, amountFen: 5000, sortOrder: 20 },
+  { code: "pro", name: "进阶包", keys: 1200, amountFen: 10000, sortOrder: 30 },
+];
 @Injectable()
 export class PaymentsService {
   constructor(
@@ -17,34 +17,48 @@ export class PaymentsService {
     private readonly gateway: PaymentGatewayService,
   ) {}
 
-  /** 校验充值套餐、创建订单并生成供前端展示的二维码。 */
-  async create(userId: string, body: { points?: number; channel?: PaymentChannel }) {
-    const points = Number(body.points);
-    const amountFen = packs.get(points);
-    if (!amountFen) throw new BadRequestException("充值套餐无效");
-    const channel =
-      body.channel === PaymentChannel.ALIPAY ? PaymentChannel.ALIPAY : PaymentChannel.WECHAT;
+  /** 首次使用时创建默认套餐，之后完全由 manage 后台维护。 */
+  private async ensurePackages() {
+    if (await this.prisma.rechargePackage.count()) return;
+    await this.prisma.rechargePackage.createMany({ data: defaultPackages, skipDuplicates: true });
+  }
+
+  /** 返回面向用户的已启用套餐。 */
+  async packages() {
+    await this.ensurePackages();
+    return this.prisma.rechargePackage.findMany({
+      where: { active: true },
+      orderBy: [{ sortOrder: "asc" }, { amountFen: "asc" }],
+      select: { id: true, name: true, keys: true, amountFen: true },
+    });
+  }
+
+  /** 校验充值套餐、创建微信 Native 订单并生成供前端展示的二维码。 */
+  async create(userId: string, body: { packageId?: string }) {
+    const rechargePackage = await this.prisma.rechargePackage.findFirst({
+      where: { id: body.packageId, active: true },
+    });
+    if (!rechargePackage) throw new BadRequestException("Keys 充值套餐无效或已下架");
+    const channel = PaymentChannel.WECHAT;
     const orderNo = `CK${Date.now()}${randomBytes(4).toString("hex").toUpperCase()}`;
     const order = await this.prisma.paymentOrder.create({
       data: {
         orderNo,
         userId,
         channel,
-        amountFen,
-        points,
+        amountFen: rechargePackage.amountFen,
+        keys: rechargePackage.keys,
+        packageId: rechargePackage.id,
         expiresAt: new Date(Date.now() + 15 * 60_000),
       },
     });
     const base = process.env.PUBLIC_API_URL ?? `http://localhost:${process.env.PORT ?? 3000}/api`;
-    const notifyUrl =
-      channel === PaymentChannel.WECHAT
-        ? `${base}/payments/wechat/notify`
-        : `${base}/payments/alipay/notify`;
+    const notifyUrl = `${base}/payments/wechat/notify`;
     try {
       const qrUrl = await this.gateway.create(channel, {
         orderNo,
-        amountFen,
-        description: `CreatKey ${points} 点`,
+        amountFen: rechargePackage.amountFen,
+        description: `CreatKey ${rechargePackage.keys} Keys`,
         notifyUrl,
       });
       const saved = await this.prisma.paymentOrder.update({
@@ -83,7 +97,21 @@ export class PaymentsService {
     return this.complete(order.orderNo, `mock-${id}`, { source: "mock" });
   }
 
-  /** 幂等完成订单、记录支付事件并为用户增加点数。 */
+  /** 用户主动取消支付，并同步关闭微信侧待支付订单。 */
+  async cancel(id: string, userId: string) {
+    const order = await this.prisma.paymentOrder.findFirst({ where: { id, userId } });
+    if (!order) throw new NotFoundException("支付订单不存在");
+    if (order.status === PaymentStatus.PAID) throw new BadRequestException("订单已支付，无法取消");
+    if (order.status === PaymentStatus.CLOSED) return order;
+    await this.gateway.cancel(order.channel, order.orderNo);
+    await this.prisma.paymentOrder.updateMany({
+      where: { id: order.id, status: PaymentStatus.PENDING },
+      data: { status: PaymentStatus.CLOSED },
+    });
+    return this.prisma.paymentOrder.findUniqueOrThrow({ where: { id: order.id } });
+  }
+
+  /** 幂等完成订单、记录支付事件并为用户增加 Keys。 */
   async complete(orderNo: string, tradeNo: string, payload: Record<string, unknown>) {
     const order = await this.prisma.paymentOrder.findUnique({ where: { orderNo } });
     if (!order) throw new NotFoundException("订单不存在");
@@ -100,16 +128,16 @@ export class PaymentsService {
       });
       const account = await tx.pointAccount.update({
         where: { userId: current.userId },
-        data: { balance: { increment: current.points } },
+        data: { balance: { increment: current.keys } },
       });
       await tx.pointLedger.create({
         data: {
           userId: current.userId,
           type: LedgerType.RECHARGE,
-          amount: current.points,
+          amount: current.keys,
           balanceAfter: account.balance,
           referenceId: current.id,
-          description: `${current.channel}充值`,
+          description: `${current.channel} Keys 充值`,
         },
       });
       return updatedOrder;

@@ -32,7 +32,9 @@ export class AuthGuard implements CanActivate {
       nickname: session.user.nickname,
       avatarUrl: session.user.avatarUrl,
       roles: session.user.roles,
-      points: session.user.pointAccount?.balance ?? 0,
+      profileInitialized: session.user.profileInitialized ?? session.user.roles.length > 0,
+      phone: session.user.phone,
+      keys: session.user.pointAccount?.balance ?? 0,
       sessionVersion: session.user.sessionVersion,
     };
     return true;

@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { LoginPage } from "@/pages/login";
 import { StudioPage } from "@/pages/studio";
-import { RechargeDialog } from "@/components/recharge-dialog";
+import { UserOnboardingDialog } from "@/components/user-onboarding-dialog";
 import { api, ApiError } from "@/lib/api";
 import type { User } from "@/types";
 
-/** 应用根组件：恢复登录态，并在登录页、工作台和充值弹窗间协调状态。 */
+/** 应用根组件：恢复登录态并协调登录、工作台与用户资料初始化。 */
 export default function App() {
   const [user, setUser] = useState<User>();
   const [ready, setReady] = useState(false);
-  const [recharge, setRecharge] = useState(false);
-  /** 从服务端刷新当前用户和点数余额。 */
+  /** 从服务端刷新当前用户和 Keys 余额。 */
   const refresh = useCallback(
     () =>
       api<User>("/auth/me")
@@ -36,19 +35,18 @@ export default function App() {
     setUser(undefined);
   }
   if (!ready)
-    return (
-      <div className="grid h-screen place-items-center bg-[#080808] text-xs tracking-[.3em] text-zinc-600">
-        CREATKEY
-      </div>
-    );
+    return <div className="ck-app-loading grid h-screen place-items-center">CREATKEY</div>;
+  const onboardingOpen = Boolean(user && !user.profileInitialized);
   return (
     <>
-      {user ? (
-        <StudioPage user={user} onLogout={logout} onRecharge={() => setRecharge(true)} />
-      ) : (
-        <LoginPage onLogin={setUser} />
-      )}
-      <RechargeDialog open={recharge} onClose={() => setRecharge(false)} onPaid={refresh} />
+      <div className="contents" inert={onboardingOpen}>
+        {user ? (
+          <StudioPage user={user} onLogout={logout} onUserRefresh={refresh} />
+        ) : (
+          <LoginPage onLogin={setUser} />
+        )}
+      </div>
+      <UserOnboardingDialog user={user} open={onboardingOpen} onComplete={setUser} />
     </>
   );
 }

@@ -1,40 +1,52 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { Image, Sparkles, Type, WandSparkles } from "lucide-react";
+import { ChevronDown, Image, Play, Plus, Sparkles, Type, WandSparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { WorkflowNodeData } from "@/types";
 
 const icons = { 提示词: Type, 提示词优化: WandSparkles, 图像生成: Image };
 
-/** 渲染画布节点卡片及其输入、输出连线端口。 */
 export function WorkflowNode({ data, selected }: NodeProps) {
   const nodeData = data as WorkflowNodeData;
   const Icon = icons[nodeData.label as keyof typeof icons] ?? Sparkles;
+  const status = String(nodeData.status ?? "READY");
   return (
     <div
       className={cn(
-        "node-card min-w-[230px] rounded-xl border bg-[#151515] shadow-2xl transition",
-        selected ? "border-white/40 shadow-white/5" : "border-white/10",
+        "ck-node-card node-card group w-[240px] overflow-visible rounded-[10px] border transition",
+        selected && "is-selected",
       )}
     >
       <Handle
         type="target"
         position={Position.Left}
-        className="!size-2.5 !border-2 !border-[#151515] !bg-zinc-400"
+        className="ck-node-target !size-2.5 !border-0"
       />
-      <div className="flex items-center gap-3 border-b border-white/[.07] px-4 py-3">
-        <div className="grid size-8 place-items-center rounded-lg bg-white text-black">
-          <Icon size={15} />
+      <div className="flex h-11 items-center justify-between px-3">
+        <div className="ck-node-title flex items-center gap-2">
+          <Icon size={14} className="ck-node-icon" /> {nodeData.label}
         </div>
-        <div>
-          <div className="text-sm font-medium text-zinc-100">{nodeData.label}</div>
-          <div className="mt-0.5 text-[10px] uppercase tracking-[.16em] text-zinc-600">Ready</div>
-        </div>
+        <ChevronDown size={13} className="ck-node-chevron" />
       </div>
-      <p className="px-4 py-3 text-xs leading-5 text-zinc-500">{nodeData.description}</p>
+      <div className="ck-node-body mx-3 rounded-md border p-2.5">
+        {nodeData.description || "请输入描述或配置节点参数"}
+      </div>
+      <div className="ck-node-result flex h-10 items-center justify-end gap-1 px-3">
+        <span>
+          {status === "RUNNING" ? "执行中" : status === "SUCCEEDED" ? "已完成" : "生成结果"}
+        </span>
+        {status === "RUNNING" ? (
+          <Sparkles size={12} className="ck-node-running animate-pulse" />
+        ) : (
+          <Play size={10} />
+        )}
+      </div>
+      <button className="ck-node-add absolute -bottom-3 left-1/2 grid size-6 -translate-x-1/2 place-items-center rounded-full border opacity-0 transition group-hover:opacity-100">
+        <Plus size={12} />
+      </button>
       <Handle
         type="source"
         position={Position.Right}
-        className="!size-2.5 !border-2 !border-[#151515] !bg-white"
+        className="ck-node-source !size-2.5 !border-0"
       />
     </div>
   );

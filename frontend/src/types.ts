@@ -6,7 +6,23 @@ export interface User {
   nickname: string;
   avatarUrl?: string;
   roles: Role[];
-  points: number;
+  profileInitialized: boolean;
+  phone: string;
+  keys: number;
+}
+export interface RechargePackage {
+  id: string;
+  name: string;
+  keys: number;
+  amountFen: number;
+}
+export interface PaymentOrder {
+  id: string;
+  status: "PENDING" | "PAID" | "CLOSED";
+  keys: number;
+  amountFen: number;
+  qrImage: string;
+  mock: boolean;
 }
 export interface WorkflowNodeData extends Record<string, unknown> {
   label: string;

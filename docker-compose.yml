@@ -5,6 +5,11 @@ x-backend-env: &backend-env
   REDIS_URL: redis://redis:6379
   PORT: 3000
   FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+  MANAGE_URL: ${MANAGE_URL:-http://localhost:5174}
+  ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD:-CreatKey@2026}
+  ADMIN_DISPLAY_NAME: ${ADMIN_DISPLAY_NAME:-超级管理员}
+  ADMIN_SESSION_TTL_HOURS: ${ADMIN_SESSION_TTL_HOURS:-12}
   PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:3000/api}
   COOKIE_SECURE: ${COOKIE_SECURE:-false}
   SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
@@ -15,6 +20,12 @@ x-backend-env: &backend-env
   SMS_API_KEY: ${SMS_API_KEY:-}
   SMS_TEMPLATE_ID: ${SMS_TEMPLATE_ID:-}
   PAYMENT_MOCK: ${PAYMENT_MOCK:-true}
+  WECHAT_PAY_APP_ID: ${WECHAT_PAY_APP_ID:-}
+  WECHAT_PAY_MCH_ID: ${WECHAT_PAY_MCH_ID:-}
+  WECHAT_PAY_SERIAL_NO: ${WECHAT_PAY_SERIAL_NO:-}
+  WECHAT_PAY_PRIVATE_KEY: ${WECHAT_PAY_PRIVATE_KEY:-}
+  WECHAT_PAY_PLATFORM_PUBLIC_KEY: ${WECHAT_PAY_PLATFORM_PUBLIC_KEY:-}
+  WECHAT_PAY_API_V3_KEY: ${WECHAT_PAY_API_V3_KEY:-}
   STORAGE_ENDPOINT: http://minio:9000
   STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
   STORAGE_BUCKET: ${STORAGE_BUCKET:-creatkey}
@@ -114,6 +125,16 @@ services:
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      - api
+
+  manage:
+    build:
+      context: .
+      dockerfile: manage/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${MANAGE_PORT:-5174}:80"
     depends_on:
       - api
 
