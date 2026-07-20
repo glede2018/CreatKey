@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { validateDag, workflowDefinitionSchema } from "./workflow.schema";
 
@@ -50,15 +50,18 @@ export class WorkflowsService {
     ownerId: string,
     body: { name?: string; description?: string; definition?: unknown },
   ) {
-    await this.findOwned(id, ownerId);
+    const workflow = await this.findOwned(id, ownerId);
+    if (workflow.activeRunId) throw new ConflictException("工作流正在运行，暂时不能编辑");
     const definition = this.parse(body.definition);
-    return this.prisma.workflow.update({
-      where: { id },
+    const updated = await this.prisma.workflow.updateMany({
+      where: { id, ownerId, activeRunId: null },
       data: {
         name: body.name?.trim() || "未命名工作流",
         description: body.description,
         definition: definition as any,
       },
     });
+    if (!updated.count) throw new ConflictException("工作流正在运行，暂时不能编辑");
+    return this.findOwned(id, ownerId);
   }
 }

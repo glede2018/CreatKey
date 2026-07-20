@@ -31,6 +31,10 @@ x-backend-env: &backend-env
   STORAGE_BUCKET: ${STORAGE_BUCKET:-creatkey}
   STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-creatkey}
   STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-creatkey-secret}
+  LOCAL_UPLOAD_DIR: /app/uploads
+  DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+  DASHSCOPE_BASE_URL: ${DASHSCOPE_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+  DASHSCOPE_API_BASE_URL: ${DASHSCOPE_API_BASE_URL:-}
 
 services:
   postgres:
@@ -97,6 +101,8 @@ services:
     environment: *backend-env
     ports:
       - "${API_PORT:-3000}:3000"
+    volumes:
+      - uploads_data:/app/uploads
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -112,6 +118,8 @@ services:
     restart: unless-stopped
     command: ["node", "backend/dist/worker.js"]
     environment: *backend-env
+    volumes:
+      - uploads_data:/app/uploads
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -142,3 +150,4 @@ volumes:
   postgres_data:
   redis_data:
   minio_data:
+  uploads_data:

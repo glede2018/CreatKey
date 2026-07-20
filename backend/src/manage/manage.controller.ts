@@ -35,6 +35,18 @@ export class ManageController {
     return this.manage.rechargePackages();
   }
 
+  @Get("models") models() {
+    return this.manage.models();
+  }
+
+  @Patch("models/:id/status") updateModelStatus(@Param("id") id: string, @Body() body: any) {
+    return this.manage.updateModelStatus(id, body);
+  }
+
+  @Patch("models/:id/costs") updateModelCosts(@Param("id") id: string, @Body() body: any) {
+    return this.manage.updateModelCosts(id, body);
+  }
+
   @Post("recharge-packages") createRechargePackage(@Body() body: any) {
     return this.manage.createRechargePackage(body);
   }

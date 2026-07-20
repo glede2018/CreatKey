@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { LedgerType, PaymentStatus, Prisma, Role, RunStatus } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { PrismaService } from "../database/prisma.service";
+import { aiModelCatalog } from "../ai/model-catalog";
 
 const DAY = 86_400_000;
 const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -192,6 +193,109 @@ export class ManageService {
       where: { id },
       data: this.rechargePackageInput(body),
     });
+  }
+
+  /** 返回去重后的模型列表，并合并运营侧上下架状态。 */
+  async models() {
+    const [settings, costs] = await Promise.all([
+      this.prisma.aiModelSetting.findMany(),
+      this.prisma.aiModelCapabilityCost.findMany(),
+    ]);
+    const settingById = new Map(settings.map((item) => [item.modelId, item]));
+    const costByCapability = new Map(
+      costs.map((item) => [`${item.modelId}:${item.capability}`, item.keys]),
+    );
+    const models = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        provider: string;
+        capabilities: Set<string>;
+        defaultCapabilityKeys: Record<string, number>;
+      }
+    >();
+    for (const model of aiModelCatalog) {
+      const current = models.get(model.id);
+      if (current) {
+        model.capabilities.forEach((capability) => current.capabilities.add(capability));
+        Object.assign(current.defaultCapabilityKeys, model.capabilityKeys);
+      } else
+        models.set(model.id, {
+          id: model.id,
+          name: model.name.replace(/ 编辑$/, ""),
+          provider: model.provider,
+          capabilities: new Set(model.capabilities),
+          defaultCapabilityKeys: { ...model.capabilityKeys },
+        });
+    }
+    return [...models.values()].map((model) => {
+      const setting = settingById.get(model.id);
+      return {
+        id: model.id,
+        name: model.name,
+        provider: model.provider,
+        capabilities: [...model.capabilities],
+        capabilityKeys: Object.fromEntries(
+          [...model.capabilities].map((capability) => [
+            capability,
+            costByCapability.get(`${model.id}:${capability}`) ??
+              model.defaultCapabilityKeys[capability] ??
+              0,
+          ]),
+        ),
+        active: setting?.active ?? true,
+        updatedAt: setting?.updatedAt?.toISOString(),
+      };
+    });
+  }
+
+  /** 上下架模型；状态会同时影响创作端目录和实际执行。 */
+  async updateModelStatus(modelId: string, body: Record<string, unknown>) {
+    if (!aiModelCatalog.some((model) => model.id === modelId))
+      throw new NotFoundException("模型不存在");
+    if (typeof body.active !== "boolean") throw new BadRequestException("模型状态无效");
+    return this.prisma.aiModelSetting.upsert({
+      where: { modelId },
+      create: { modelId, active: body.active },
+      update: { active: body.active },
+    });
+  }
+
+  /** 按模型能力更新 Keys 价格，同一模型的不同调用方式可独立计费。 */
+  async updateModelCosts(modelId: string, body: Record<string, unknown>) {
+    const capabilities = new Set(
+      aiModelCatalog.filter((model) => model.id === modelId).flatMap((model) => model.capabilities),
+    );
+    if (!capabilities.size) throw new NotFoundException("模型不存在");
+    const value = body.capabilityKeys;
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new BadRequestException("模型能力价格无效");
+    }
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (!entries.length || entries.some(([capability]) => !capabilities.has(capability))) {
+      throw new BadRequestException("模型能力无效");
+    }
+    const normalized = entries.map(([capability, rawKeys]) => {
+      const keys = Number(rawKeys);
+      if (!Number.isInteger(keys) || keys < 0 || keys > 1_000_000) {
+        throw new BadRequestException(`${capability} 的 Keys 必须是 0 到 1000000 的整数`);
+      }
+      return { capability, keys };
+    });
+    await this.prisma.$transaction(
+      normalized.map(({ capability, keys }) =>
+        this.prisma.aiModelCapabilityCost.upsert({
+          where: { modelId_capability: { modelId, capability } },
+          create: { modelId, capability, keys },
+          update: { keys },
+        }),
+      ),
+    );
+    return {
+      modelId,
+      capabilityKeys: Object.fromEntries(normalized.map((item) => [item.capability, item.keys])),
+    };
   }
 
   private rechargePackageInput(body: Record<string, unknown>) {

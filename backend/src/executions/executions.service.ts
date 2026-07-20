@@ -1,97 +1,232 @@
 import { InjectQueue } from "@nestjs/bullmq";
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  type OnModuleDestroy,
+  type OnModuleInit,
+} from "@nestjs/common";
 import { NodeRunStatus, RunStatus } from "@prisma/client";
 import type { Queue } from "bullmq";
-import { PrismaService } from "../database/prisma.service";
+import { AiGatewayService } from "../ai/ai-gateway.service";
+import { ModelCatalogService } from "../ai/model-catalog.service";
 import { PointsService } from "../billing/points.service";
+import { PrismaService } from "../database/prisma.service";
 import {
+  collectExecutionIssues,
+  executionDefinition,
   validateDag,
   workflowDefinitionSchema,
   type WorkflowDefinition,
 } from "../workflows/workflow.schema";
+import { nodeExecutionKeys } from "../workflows/node-catalog";
 
 const kindsByLabel: Record<string, string> = {
   提示词: "input.text",
   提示词优化: "transform.template",
   图像生成: "image.generate",
 };
-/** 优先读取节点配置中的 kind，并兼容旧版中文节点标签。 */
-const nodeKind = (node: any) =>
-  node.data.config?.kind ?? kindsByLabel[node.data.label] ?? "utility.passthrough";
 
-/** 返回节点执行完成后应消耗的 Keys。 */
-const nodeCost = (kind: string) =>
-  kind === "image.generate" ? 10 : kind === "transform.template" ? 1 : 0;
+const nodeKind = (node: WorkflowDefinition["nodes"][number]) =>
+  node.data.kind ??
+  String(node.data.config?.kind ?? kindsByLabel[node.data.label] ?? "utility.passthrough");
+
+function errorDetails(error: unknown) {
+  const value = error as {
+    name?: string;
+    message?: string;
+    status?: number;
+    code?: string;
+    providerTaskId?: string;
+  };
+  return {
+    name: value?.name ?? "Error",
+    message: value?.message ?? "节点执行失败",
+    status: value?.status,
+    code: value?.code,
+    providerTaskId: value?.providerTaskId,
+  };
+}
 
 @Injectable()
-export class ExecutionsService {
+export class ExecutionsService implements OnModuleInit, OnModuleDestroy {
+  private recoveryTimer?: NodeJS.Timeout;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly points: PointsService,
+    private readonly aiGateway: AiGatewayService,
+    private readonly models: ModelCatalogService,
     @InjectQueue("workflow-nodes") private readonly queue: Queue,
   ) {}
 
-  /** 解析工作流快照并确认其为合法 DAG。 */
+  onModuleInit() {
+    this.recoveryTimer = setInterval(() => void this.recoverExpiredRuns(), 60_000);
+    this.recoveryTimer.unref();
+  }
+
+  onModuleDestroy() {
+    if (this.recoveryTimer) clearInterval(this.recoveryTimer);
+  }
+
+  /** 将超时运行置为失败并释放锁，避免服务异常后工作流永久不可编辑。 */
+  private async recoverExpiredRuns() {
+    const timeoutMs = Number(process.env.WORKFLOW_RUN_TIMEOUT_MS ?? 6 * 60 * 60 * 1000);
+    const expired = await this.prisma.workflowRun.findMany({
+      where: {
+        status: RunStatus.RUNNING,
+        startedAt: { lt: new Date(Date.now() - timeoutMs) },
+      },
+      include: { nodeRuns: true },
+    });
+    for (const run of expired) {
+      const finishedAt = new Date();
+      const claimed = await this.prisma.workflowRun.updateMany({
+        where: { id: run.id, status: RunStatus.RUNNING },
+        data: {
+          status: RunStatus.FAILED,
+          error: "工作流运行超时",
+          finishedAt,
+          durationMs: run.startedAt ? finishedAt.getTime() - run.startedAt.getTime() : timeoutMs,
+        },
+      });
+      if (!claimed.count) continue;
+      await this.prisma.$transaction([
+        this.prisma.nodeRun.updateMany({
+          where: { runId: run.id, status: NodeRunStatus.RUNNING },
+          data: { status: NodeRunStatus.FAILED, error: "节点运行超时", finishedAt },
+        }),
+        this.prisma.nodeRun.updateMany({
+          where: {
+            runId: run.id,
+            status: { in: [NodeRunStatus.PENDING, NodeRunStatus.QUEUED] },
+          },
+          data: { status: NodeRunStatus.SKIPPED, error: "工作流运行超时", finishedAt },
+        }),
+        this.prisma.workflow.updateMany({
+          where: { id: run.workflowId, activeRunId: run.id },
+          data: { activeRunId: null, lockedAt: null },
+        }),
+      ]);
+      const actualCost = run.nodeRuns
+        .filter((node) => node.status === NodeRunStatus.SUCCEEDED)
+        .reduce((sum, node) => sum + node.cost, 0);
+      await this.points.settle(run.id, actualCost);
+    }
+  }
+
   private parse(value: unknown) {
     const parsed = workflowDefinitionSchema.parse(value);
     validateDag(parsed);
     return parsed;
   }
 
-  /** 固化工作流版本、预冻结 Keys，并把所有入口节点加入执行队列。 */
-  async start(workflowId: string, userId: string) {
+  /** 校验数据库中的工作流 JSON，创建运行并原子设置编辑锁。 */
+  async start(workflowId: string, userId: string, targetNodeId?: string) {
     const workflow = await this.prisma.workflow.findFirst({
       where: { id: workflowId, ownerId: userId },
     });
     if (!workflow) throw new NotFoundException("工作流不存在");
+    if (workflow.activeRunId) throw new ConflictException("工作流已经在运行");
+
     let definition: WorkflowDefinition;
     try {
       definition = this.parse(workflow.definition);
-    } catch {
-      throw new BadRequestException("工作流不是有效 DAG");
+    } catch (error) {
+      throw new BadRequestException((error as Error).message || "工作流不是有效 DAG");
     }
-    const totalCost = definition.nodes.reduce((sum, node) => sum + nodeCost(nodeKind(node)), 0);
-    const latest = await this.prisma.workflowVersion.aggregate({
-      where: { workflowId },
-      _max: { number: true },
-    });
+    let runnableDefinition: WorkflowDefinition;
+    try {
+      runnableDefinition = executionDefinition(definition, targetNodeId);
+    } catch (error) {
+      throw new BadRequestException((error as Error).message);
+    }
+    const issues = collectExecutionIssues(runnableDefinition);
+    if (issues.length) {
+      throw new BadRequestException({ message: issues[0].message, issues });
+    }
+
+    const nodeCosts = new Map(
+      await Promise.all(
+        runnableDefinition.nodes.map(
+          async (node) => [node.id, await this.executionKeys(node)] as const,
+        ),
+      ),
+    );
+    const totalCost = [...nodeCosts.values()].reduce((sum, cost) => sum + cost, 0);
     const run = await this.prisma.$transaction(async (tx) => {
-      const version = await tx.workflowVersion.create({
-        data: { workflowId, number: (latest._max.number ?? 0) + 1, definition: definition as any },
-      });
-      return tx.workflowRun.create({
+      const created = await tx.workflowRun.create({
         data: {
           workflowId,
-          versionId: version.id,
           userId,
           status: RunStatus.RUNNING,
           startedAt: new Date(),
           nodeRuns: {
-            create: definition.nodes.map((node) => ({
+            create: runnableDefinition.nodes.map((node) => ({
               nodeKey: node.id,
               nodeType: nodeKind(node),
+              cost: nodeCosts.get(node.id) ?? 0,
             })),
           },
         },
         include: { nodeRuns: true },
       });
+      const locked = await tx.workflow.updateMany({
+        where: { id: workflowId, ownerId: userId, activeRunId: null },
+        data: { activeRunId: created.id, lockedAt: new Date() },
+      });
+      if (!locked.count) throw new ConflictException("工作流已经在运行");
+      return created;
     });
+
     try {
       await this.points.reserve(userId, run.id, totalCost);
     } catch (error) {
-      await this.prisma.workflowRun.delete({ where: { id: run.id } });
+      await this.prisma.$transaction([
+        this.prisma.workflow.updateMany({
+          where: { id: workflowId, activeRunId: run.id },
+          data: { activeRunId: null, lockedAt: null },
+        }),
+        this.prisma.workflowRun.delete({ where: { id: run.id } }),
+      ]);
       throw error;
     }
-    const incoming = new Set(definition.edges.map((edge) => edge.target));
-    await Promise.all(
-      definition.nodes
-        .filter((node) => !incoming.has(node.id))
-        .map((node) => this.enqueue(run.id, node.id)),
-    );
+
+    const incoming = new Set(runnableDefinition.edges.map((edge) => edge.target));
+    try {
+      await Promise.all(
+        runnableDefinition.nodes
+          .filter((node) => !incoming.has(node.id))
+          .map((node) => this.enqueue(run.id, node.id)),
+      );
+    } catch (error) {
+      const finishedAt = new Date();
+      await this.prisma.$transaction([
+        this.prisma.workflowRun.update({
+          where: { id: run.id },
+          data: {
+            status: RunStatus.FAILED,
+            error: "任务队列调度失败",
+            finishedAt,
+            durationMs: run.startedAt ? finishedAt.getTime() - run.startedAt.getTime() : 0,
+          },
+        }),
+        this.prisma.nodeRun.updateMany({
+          where: { runId: run.id },
+          data: { status: NodeRunStatus.SKIPPED, finishedAt },
+        }),
+        this.prisma.workflow.updateMany({
+          where: { id: workflowId, activeRunId: run.id },
+          data: { activeRunId: null, lockedAt: null },
+        }),
+      ]);
+      await this.points.settle(run.id, 0);
+      throw error;
+    }
     return this.get(run.id, userId);
   }
 
-  /** 查询属于指定用户的运行及其节点状态。 */
   async get(id: string, userId: string) {
     const run = await this.prisma.workflowRun.findFirst({
       where: { id, userId },
@@ -101,152 +236,232 @@ export class ExecutionsService {
     return run;
   }
 
-  /** 取消运行、标记未执行节点并释放全部冻结 Keys。 */
+  /** 取消运行并立即解除编辑锁；迟到的供应商结果会被忽略。 */
   async cancel(id: string, userId: string) {
     const run = await this.get(id, userId);
     if (run.status !== RunStatus.PENDING && run.status !== RunStatus.RUNNING) return run;
+    const now = new Date();
+    const durationMs = run.startedAt ? now.getTime() - run.startedAt.getTime() : 0;
     await this.prisma.$transaction([
       this.prisma.workflowRun.update({
         where: { id },
-        data: { status: RunStatus.CANCELED, finishedAt: new Date() },
+        data: { status: RunStatus.CANCELED, finishedAt: now, durationMs },
       }),
       this.prisma.nodeRun.updateMany({
-        where: { runId: id, status: { in: [NodeRunStatus.PENDING, NodeRunStatus.QUEUED] } },
-        data: { status: NodeRunStatus.CANCELED, finishedAt: new Date() },
+        where: {
+          runId: id,
+          status: {
+            in: [NodeRunStatus.PENDING, NodeRunStatus.QUEUED, NodeRunStatus.RUNNING],
+          },
+        },
+        data: { status: NodeRunStatus.CANCELED, finishedAt: now },
+      }),
+      this.prisma.workflow.updateMany({
+        where: { id: run.workflowId, activeRunId: id },
+        data: { activeRunId: null, lockedAt: null },
       }),
     ]);
     await this.points.settle(id, 0);
     return this.get(id, userId);
   }
 
-  /** 原子认领待执行节点并提交 BullMQ，避免重复入队。 */
   private async enqueue(runId: string, nodeKey: string) {
     const claimed = await this.prisma.nodeRun.updateMany({
       where: { runId, nodeKey, status: NodeRunStatus.PENDING },
       data: { status: NodeRunStatus.QUEUED },
     });
-    if (claimed.count)
+    if (claimed.count) {
       await this.queue.add(
         "execute-node",
         { runId, nodeKey },
         { jobId: `${runId}-${nodeKey}`, attempts: 1, removeOnComplete: 500, removeOnFail: 1000 },
       );
+    }
   }
 
-  /** 执行单个节点，保存输入输出，并在成功后推进后继节点。 */
+  /** 单个 worker 任务只负责一个节点；相互独立的入口会被 BullMQ 并行消费。 */
   async executeNode(runId: string, nodeKey: string) {
+    const startedAt = new Date();
     const claimed = await this.prisma.nodeRun.updateMany({
       where: { runId, nodeKey, status: NodeRunStatus.QUEUED },
-      data: { status: NodeRunStatus.RUNNING, startedAt: new Date(), attempt: { increment: 1 } },
+      data: { status: NodeRunStatus.RUNNING, startedAt, attempt: { increment: 1 } },
     });
     if (!claimed.count) return;
+
     const run = await this.prisma.workflowRun.findUniqueOrThrow({
       where: { id: runId },
-      include: { version: true, nodeRuns: true },
+      include: { workflow: true, nodeRuns: true },
     });
     if (run.status !== RunStatus.RUNNING) return;
-    const definition = this.parse(run.version.definition);
-    const node = definition.nodes.find((item) => item.id === nodeKey)!;
-    const predecessors = definition.edges
-      .filter((edge) => edge.target === nodeKey)
-      .map((edge) => edge.source);
-    const inputs = run.nodeRuns
-      .filter((item) => predecessors.includes(item.nodeKey))
-      .map((item) => item.output);
+    const definition = this.parse(run.workflow.definition);
+    const node = definition.nodes.find((item) => item.id === nodeKey);
+    if (!node) throw new Error(`运行节点不存在：${nodeKey}`);
+    const incomingEdges = definition.edges.filter((edge) => edge.target === nodeKey);
+    const inputs = incomingEdges.map((edge) => ({
+      sourceNode: edge.source,
+      sourceHandle: edge.sourceHandle,
+      targetHandle: edge.targetHandle,
+      value: run.nodeRuns.find((item) => item.nodeKey === edge.source)?.output,
+    }));
+
     try {
       const output = await this.runExecutor(nodeKind(node), node.data.config, inputs);
-      await this.prisma.nodeRun.update({
-        where: { runId_nodeKey: { runId, nodeKey } },
+      const finishedAt = new Date();
+      const updated = await this.prisma.nodeRun.updateMany({
+        where: { runId, nodeKey, status: NodeRunStatus.RUNNING },
         data: {
           status: NodeRunStatus.SUCCEEDED,
-          input: inputs as any,
-          output: output as any,
-          finishedAt: new Date(),
+          input: inputs as never,
+          output: output as never,
+          finishedAt,
+          durationMs: finishedAt.getTime() - startedAt.getTime(),
         },
       });
+      if (!updated.count) return;
       await this.advance(runId, nodeKey, definition);
     } catch (error) {
-      await this.prisma.$transaction([
-        this.prisma.nodeRun.update({
-          where: { runId_nodeKey: { runId, nodeKey } },
-          data: {
-            status: NodeRunStatus.FAILED,
-            error: (error as Error).message,
-            finishedAt: new Date(),
-          },
-        }),
-        this.prisma.workflowRun.update({
-          where: { id: runId },
-          data: {
-            status: RunStatus.FAILED,
-            error: `节点 ${nodeKey} 执行失败`,
-            finishedAt: new Date(),
-          },
-        }),
-        this.prisma.nodeRun.updateMany({
-          where: { runId, status: { in: [NodeRunStatus.PENDING, NodeRunStatus.QUEUED] } },
-          data: { status: NodeRunStatus.SKIPPED, finishedAt: new Date() },
-        }),
-      ]);
-      const completed = run.nodeRuns
-        .filter((item) => item.status === NodeRunStatus.SUCCEEDED)
-        .reduce((sum, item) => sum + nodeCost(item.nodeType), 0);
-      await this.points.settle(runId, completed);
-      throw error;
+      const finishedAt = new Date();
+      const details = errorDetails(error);
+      await this.prisma.nodeRun.updateMany({
+        where: { runId, nodeKey, status: NodeRunStatus.RUNNING },
+        data: {
+          status: NodeRunStatus.FAILED,
+          input: inputs as never,
+          error: details.message,
+          errorDetails: details as never,
+          finishedAt,
+          durationMs: finishedAt.getTime() - startedAt.getTime(),
+        },
+      });
+      await this.skipDescendants(runId, nodeKey, definition);
+      await this.finishIfComplete(runId);
     }
   }
 
-  /** 根据节点类型执行对应逻辑；图像节点当前返回开发占位结果。 */
   private async runExecutor(kind: string, config: Record<string, unknown>, inputs: unknown[]) {
-    if (kind === "input.text") return { text: String(config.text ?? "") };
+    if (kind === "input.text") return { type: "text", value: String(config.text ?? "") };
+    if (["input.image", "input.audio", "input.video"].includes(kind)) {
+      const asset = config.media;
+      if (!asset) throw new Error("输入节点尚未上传文件");
+      return { type: kind.split(".")[1], assets: [asset] };
+    }
     if (kind === "transform.template") {
-      const raw = (inputs[0] as any)?.text ?? JSON.stringify(inputs[0] ?? "");
-      return { text: String(config.template ?? "{{input}}").replaceAll("{{input}}", raw) };
+      const first = inputs[0] as { value?: { text?: unknown } } | undefined;
+      const raw = first?.value?.text ?? JSON.stringify(first?.value ?? "");
+      return { text: String(config.template ?? "{{input}}").replaceAll("{{input}}", String(raw)) };
     }
     if (kind === "image.generate") {
-      const prompt = (inputs[0] as any)?.text ?? String(config.prompt ?? "");
-      await new Promise((resolve) => setTimeout(resolve, 900));
+      const first = inputs[0] as { value?: { text?: unknown } } | undefined;
+      const prompt = first?.value?.text ?? String(config.prompt ?? "");
       return {
         prompt,
         artifact: {
           type: "image",
-          url: `https://placehold.co/1024x1024/111/EEE?text=${encodeURIComponent(prompt.slice(0, 24) || "CreatKey")}`,
+          url: `https://placehold.co/1024x1024/111/EEE?text=${encodeURIComponent(String(prompt).slice(0, 24) || "CreatKey")}`,
         },
       };
+    }
+    if (kind.startsWith("ai.")) {
+      const model = String(config.model ?? "");
+      if (!model) throw new Error("AI 节点尚未选择模型");
+      return this.aiGateway.execute(kind, model, config, inputs);
     }
     return { value: inputs[0] ?? config };
   }
 
-  /** 在依赖全部成功后调度后继节点，并在全图结束时完成 Keys 结算。 */
+  private executionKeys(node: WorkflowDefinition["nodes"][number]) {
+    const kind = nodeKind(node);
+    if (!kind.startsWith("ai.")) return Promise.resolve(nodeExecutionKeys(kind));
+    return this.models.executionKeys(String(node.data.config.model ?? ""), kind);
+  }
+
+  private async skipDescendants(
+    runId: string,
+    failedNodeKey: string,
+    definition: WorkflowDefinition,
+  ) {
+    const descendants = new Set<string>();
+    const queue = [failedNodeKey];
+    while (queue.length) {
+      const current = queue.shift()!;
+      for (const edge of definition.edges.filter((item) => item.source === current)) {
+        if (!descendants.has(edge.target)) {
+          descendants.add(edge.target);
+          queue.push(edge.target);
+        }
+      }
+    }
+    if (!descendants.size) return;
+    await this.prisma.nodeRun.updateMany({
+      where: {
+        runId,
+        nodeKey: { in: [...descendants] },
+        status: { in: [NodeRunStatus.PENDING, NodeRunStatus.QUEUED] },
+      },
+      data: {
+        status: NodeRunStatus.SKIPPED,
+        error: `上游节点 ${failedNodeKey} 执行失败`,
+        finishedAt: new Date(),
+      },
+    });
+  }
+
   private async advance(runId: string, nodeKey: string, definition: WorkflowDefinition) {
-    const successors = definition.edges
-      .filter((edge) => edge.source === nodeKey)
-      .map((edge) => edge.target);
-    for (const successor of new Set(successors)) {
+    const successors = new Set(
+      definition.edges.filter((edge) => edge.source === nodeKey).map((edge) => edge.target),
+    );
+    for (const successor of successors) {
       const required = definition.edges
         .filter((edge) => edge.target === successor)
         .map((edge) => edge.source);
-      const done = await this.prisma.nodeRun.count({
-        where: { runId, nodeKey: { in: required }, status: NodeRunStatus.SUCCEEDED },
+      const predecessors = await this.prisma.nodeRun.findMany({
+        where: { runId, nodeKey: { in: required } },
+        select: { status: true },
       });
-      if (done === required.length) await this.enqueue(runId, successor);
+      if (predecessors.every((item) => item.status === NodeRunStatus.SUCCEEDED)) {
+        await this.enqueue(runId, successor);
+      }
     }
+    await this.finishIfComplete(runId);
+  }
+
+  private async finishIfComplete(runId: string) {
     const remaining = await this.prisma.nodeRun.count({
       where: {
         runId,
-        status: { in: [NodeRunStatus.PENDING, NodeRunStatus.QUEUED, NodeRunStatus.RUNNING] },
+        status: {
+          in: [NodeRunStatus.PENDING, NodeRunStatus.QUEUED, NodeRunStatus.RUNNING],
+        },
       },
     });
-    if (!remaining) {
-      const nodeRuns = await this.prisma.nodeRun.findMany({ where: { runId } });
-      const actual = nodeRuns
-        .filter((node) => node.status === NodeRunStatus.SUCCEEDED)
-        .reduce((sum, node) => sum + nodeCost(node.nodeType), 0);
-      const updated = await this.prisma.workflowRun.updateMany({
-        where: { id: runId, status: RunStatus.RUNNING },
-        data: { status: RunStatus.SUCCEEDED, cost: actual, finishedAt: new Date() },
-      });
-      if (updated.count) await this.points.settle(runId, actual);
-    }
+    if (remaining) return;
+
+    const run = await this.prisma.workflowRun.findUniqueOrThrow({
+      where: { id: runId },
+      include: { nodeRuns: true },
+    });
+    if (run.status !== RunStatus.RUNNING) return;
+    const failed = run.nodeRuns.filter((node) => node.status === NodeRunStatus.FAILED);
+    const actualCost = run.nodeRuns
+      .filter((node) => node.status === NodeRunStatus.SUCCEEDED)
+      .reduce((sum, node) => sum + node.cost, 0);
+    const finishedAt = new Date();
+    const status = failed.length ? RunStatus.FAILED : RunStatus.SUCCEEDED;
+    const updated = await this.prisma.workflowRun.updateMany({
+      where: { id: runId, status: RunStatus.RUNNING },
+      data: {
+        status,
+        cost: actualCost,
+        error: failed.length ? `${failed.length} 个节点执行失败` : null,
+        finishedAt,
+        durationMs: run.startedAt ? finishedAt.getTime() - run.startedAt.getTime() : 0,
+      },
+    });
+    if (!updated.count) return;
+    await this.prisma.workflow.updateMany({
+      where: { id: run.workflowId, activeRunId: runId },
+      data: { activeRunId: null, lockedAt: null },
+    });
+    await this.points.settle(runId, actualCost);
   }
 }

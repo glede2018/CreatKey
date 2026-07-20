@@ -12,6 +12,32 @@ TapNow 风格的 AI 工作流创作平台，包含纯前端 `frontend` 和 Node.
 
 默认启用模拟短信和模拟支付，短信登录支持 `+86` 中国大陆手机号，开发万能验证码为 `888888`。
 
+## AI 工作流与百炼
+
+工作流中的文本、图片、音频和视频输入会保存到 `LOCAL_UPLOAD_DIR`（默认项目根目录下的
+`uploads`），Docker 环境由 `uploads_data` 数据卷在 API 与 Worker 之间共享。媒体存储通过统一
+Provider 接口访问，后续可直接增加阿里云 OSS 实现。
+
+调用阿里云百炼前，在 `.env` 中配置：
+
+```bash
+DASHSCOPE_API_KEY="新创建的 API Key"
+DASHSCOPE_BASE_URL="创建 API Key 时显示的 OpenAI compatible API Host"
+```
+
+新版 `sk-ws` Key 应使用其业务空间专属 API Host。请勿把 API Key 写入源码或提交到 Git。
+图生视频要求百炼能够访问来源图片；本地开发时需要把 `PUBLIC_API_URL` 配置为可公网访问的 API
+地址，上线切换 OSS 后由 OSS URL 自动满足该条件。
+
+点击“执行全部”后，后端会校验数据库中的工作流 JSON 并通过 `activeRunId` 锁定工作流；锁定期间
+API 会拒绝保存，画布只允许查看、缩放和取消执行。BullMQ 按 DAG 依赖调度节点，独立分支最多
+并行执行 8 个任务。失败节点的后代会标记为 `SKIPPED`，无关分支继续执行。节点运行记录保存
+输入、输出、开始/结束时间、毫秒耗时和清理后的错误详情。运行成功、失败、取消或超过
+`WORKFLOW_RUN_TIMEOUT_MS` 后会自动解除编辑锁。
+
+工作流定义直接保存在数据库的 `Workflow.definition` JSON 字段中，不为每次运行创建快照；用户
+可以在画布顶部导入或导出同一格式的 JSON 文件。
+
 ## 运营后台
 
 运营后台是与 `frontend` 同级的独立 `manage` 应用，开发地址为

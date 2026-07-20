@@ -14,11 +14,13 @@ import {
   Search,
   Users,
   Workflow,
+  Bot,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ManageStatCard } from "@/components/manage-stat-card";
 import { PointsAdjustDialog } from "@/components/points-adjust-dialog";
 import { RechargePackages } from "@/components/recharge-packages";
+import { ModelManagement } from "@/components/model-management";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +47,7 @@ const navItems = [
   { id: "users", label: "用户管理", icon: Users },
   { id: "runs", label: "运行记录", icon: Activity },
   { id: "payments", label: "充值订单", icon: CircleDollarSign },
+  { id: "models", label: "模型管理", icon: Bot },
   { id: "packages", label: "Keys 套餐", icon: KeyRound },
 ] as const;
 
@@ -101,7 +104,7 @@ export function ManagePage({ admin, onBack, onLogout }: ManagePageProps) {
   const [revision, setRevision] = useState(0);
 
   useEffect(() => {
-    if (section === "packages") {
+    if (section === "packages" || section === "models") {
       setLoading(false);
       setLoadError(undefined);
       return;
@@ -304,6 +307,8 @@ export function ManagePage({ admin, onBack, onLogout }: ManagePageProps) {
             </section>
           ) : section === "packages" ? (
             <RechargePackages />
+          ) : section === "models" ? (
+            <ModelManagement />
           ) : loading && !overview && !users && !runs && !payments ? (
             <div className="grid h-80 place-items-center text-zinc-600">
               <Loader2 className="animate-spin" size={22} />

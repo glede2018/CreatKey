@@ -32,8 +32,12 @@ export class WorkflowsController {
     return this.workflows.update(id, user.id, body);
   }
 
-  /** 创建工作流版本并开始一次 DAG 运行。 */
-  @Post(":id/runs") run(@Param("id") id: string, @CurrentUser() user: AuthUser) {
-    return this.executions.start(id, user.id);
+  /** 锁定工作流并开始完整 DAG 或指定节点及其上游依赖的运行。 */
+  @Post(":id/runs") run(
+    @Param("id") id: string,
+    @Body() body: { nodeId?: string },
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.executions.start(id, user.id, body.nodeId);
   }
 }

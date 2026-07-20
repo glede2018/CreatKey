@@ -1,5 +1,5 @@
 /** 运营后台支持的一级页面。 */
-export type ManageSection = "overview" | "users" | "runs" | "payments" | "packages";
+export type ManageSection = "overview" | "users" | "runs" | "payments" | "models" | "packages";
 
 export interface OverviewData {
   metrics: {
@@ -64,6 +64,16 @@ export interface RechargePackage {
   active: boolean;
   sortOrder: number;
   updatedAt: string;
+}
+
+export interface ManageModel {
+  id: string;
+  name: string;
+  provider: string;
+  capabilities: string[];
+  capabilityKeys: Record<string, number>;
+  active: boolean;
+  updatedAt?: string;
 }
 
 export interface PageData<T> {

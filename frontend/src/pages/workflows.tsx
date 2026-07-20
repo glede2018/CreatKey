@@ -5,9 +5,10 @@ import { api } from "@/lib/api";
 import type { Workflow } from "@/types";
 
 /** 工作流列表页面。 */
-export function WorkflowsPage({ onOpen }: { onOpen: (workflow?: Workflow) => void }) {
+export function WorkflowsPage() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -20,6 +21,40 @@ export function WorkflowsPage({ onOpen }: { onOpen: (workflow?: Workflow) => voi
     };
   }, []);
 
+  async function createWorkflow() {
+    if (creating) return;
+    const editorWindow = window.open("about:blank", "_blank");
+    if (!editorWindow) {
+      toast.error("新窗口被浏览器拦截，请允许弹出窗口后重试");
+      return;
+    }
+    editorWindow.opener = null;
+    setCreating(true);
+    try {
+      const workflow = await api<Workflow>("/workflows", {
+        method: "POST",
+        body: JSON.stringify({
+          name: "未命名",
+          definition: {
+            schemaVersion: 1,
+            nodes: [],
+            edges: [],
+            viewport: { x: 0, y: 0, zoom: 1 },
+          },
+        }),
+      });
+      setWorkflows((items) => [workflow, ...items]);
+      editorWindow.location.replace(
+        `/?workflow=${encodeURIComponent(workflow.id)}`,
+      );
+    } catch (error) {
+      editorWindow.close();
+      toast.error(error instanceof Error ? error.message : "工作流创建失败");
+    } finally {
+      setCreating(false);
+    }
+  }
+
   return (
     <main className="min-w-0 flex-1 overflow-y-auto px-3 pb-8 pt-2" aria-label="工作流页面">
       {loading ? (
@@ -30,21 +65,28 @@ export function WorkflowsPage({ onOpen }: { onOpen: (workflow?: Workflow) => voi
         <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-4">
           <button
             type="button"
-            onClick={() => onOpen()}
-            className="ck-workflow-new group flex aspect-[1.62/1] min-h-40 flex-col items-center justify-center rounded-[10px] transition"
+            disabled={creating}
+            aria-busy={creating}
+            onClick={createWorkflow}
+            className="ck-workflow-new group flex aspect-[1.62/1] min-h-40 flex-col items-center justify-center rounded-[10px] transition disabled:cursor-wait disabled:opacity-70"
           >
-            <Plus
-              size={25}
-              strokeWidth={1.4}
-              className="ck-text-secondary mb-3 transition group-hover:scale-110"
-            />
-            新建工作流
+            {creating ? (
+              <Loader2 size={25} className="ck-text-secondary mb-3 animate-spin" />
+            ) : (
+              <Plus
+                size={25}
+                strokeWidth={1.4}
+                className="ck-text-secondary mb-3 transition group-hover:scale-110"
+              />
+            )}
+            {creating ? "正在创建…" : "新建工作流"}
           </button>
           {workflows.map((item, index) => (
-            <button
+            <a
               key={item.id}
-              type="button"
-              onClick={() => onOpen(item)}
+              href={`/?workflow=${encodeURIComponent(item.id)}`}
+              target="_blank"
+              rel="noopener noreferrer"
               className="ck-workflow-card group overflow-hidden rounded-[10px] text-left transition"
             >
               <div className="ck-workflow-cover-frame relative aspect-[2.05/1] overflow-hidden">
@@ -64,7 +106,7 @@ export function WorkflowsPage({ onOpen }: { onOpen: (workflow?: Workflow) => voi
                 </div>
                 <MoreHorizontal size={17} className="ck-workflow-more" />
               </div>
-            </button>
+            </a>
           ))}
         </div>
       )}

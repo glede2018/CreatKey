@@ -8,111 +8,200 @@ import {
   type Viewport,
 } from "@xyflow/react";
 import { create } from "zustand";
+import { getNodeDefinition, hydrateNodeData } from "@/lib/workflow-catalog";
 import type { WorkflowDefinition, WorkflowNodeData } from "@/types";
 import type { Edge, Node } from "@xyflow/react";
 
-const initialNodes: Node<WorkflowNodeData>[] = [
-  {
-    id: "prompt",
-    type: "workflow",
-    position: { x: 120, y: 180 },
+const legacyKinds: Record<string, string> = {
+  提示词: "input.text",
+  提示词优化: "transform.template",
+  图像生成: "image.generate",
+};
+
+function normalizeNode(node: Node<WorkflowNodeData>) {
+  const kind = node.data.kind ?? String(node.data.config?.kind ?? legacyKinds[node.data.label] ?? "");
+  const definition = getNodeDefinition(kind);
+  return {
+    ...node,
     data: {
-      label: "提示词",
-      description: "输入创意描述",
-      config: { text: "未来主义香水广告，黑色背景，电影光效" },
+      ...node.data,
+      kind,
+      inputs: node.data.inputs ?? definition?.inputs ?? [],
+      outputs: node.data.outputs ?? definition?.outputs ?? [],
     },
-  },
-  {
-    id: "enhance",
-    type: "workflow",
-    position: { x: 440, y: 180 },
-    data: {
-      label: "提示词优化",
-      description: "让描述更适合图像模型",
-      config: { template: "{{input}}，商业摄影，8K" },
-    },
-  },
-  {
-    id: "image",
-    type: "workflow",
-    position: { x: 760, y: 180 },
-    data: {
-      label: "图像生成",
-      description: "生成最终视觉资产",
-      config: { ratio: "1:1", count: 1 },
-    },
-  },
-];
-const initialEdges: Edge[] = [
-  { id: "prompt-enhance", source: "prompt", target: "enhance", animated: true },
-  { id: "enhance-image", source: "enhance", target: "image", animated: true },
-];
+  };
+}
 
 interface EditorState {
   nodes: Node<WorkflowNodeData>[];
   edges: Edge[];
   viewport: Viewport;
   selectedId?: string;
-  /** 整体替换节点集合。 */
+  locked: boolean;
   setNodes: (nodes: Node<WorkflowNodeData>[]) => void;
-  /** 整体替换连线集合。 */
   setEdges: (edges: Edge[]) => void;
-  /** 应用 React Flow 产生的节点变更。 */
+  setViewport: (viewport: Viewport) => void;
   onNodesChange: (changes: NodeChange[]) => void;
-  /** 应用 React Flow 产生的连线变更。 */
   onEdgesChange: (changes: EdgeChange[]) => void;
-  /** 创建一条新的有向连线。 */
   onConnect: (connection: Connection) => void;
-  /** 记录当前选中的节点。 */
+  canConnect: (connection: Connection | Edge) => boolean;
+  setLocked: (locked: boolean) => void;
   select: (id?: string) => void;
-  /** 更新节点配置中的单个字段。 */
   updateConfig: (id: string, key: string, value: unknown) => void;
-  /** 按节点类型在画布中加入新节点。 */
-  addNode: (kind: string, label: string) => void;
-  /** 从后端或 JSON 文件载入完整工作流。 */
+  updateConfigs: (id: string, values: Record<string, unknown>) => void;
+  addNode: (kind: string) => void;
+  pasteNode: (node: Node<WorkflowNodeData>, anchorId: string) => string;
+  deleteNode: (id: string) => void;
+  deleteEdge: (id: string) => void;
   load: (definition: WorkflowDefinition) => void;
-  /** 导出可持久化的工作流定义。 */
   export: () => WorkflowDefinition;
 }
 
-/** 管理工作流画布的节点、连线、选择和导入导出状态。 */
+/** 管理工作流画布，并在创建连线前执行端口类型、数量、重复与环路校验。 */
 export const useEditor = create<EditorState>((set, get) => ({
-  nodes: initialNodes,
-  edges: initialEdges,
+  nodes: [],
+  edges: [],
   viewport: { x: 0, y: 0, zoom: 1 },
+  locked: false,
   setNodes: (nodes) => set({ nodes }),
   setEdges: (edges) => set({ edges }),
-  onNodesChange: (changes) =>
-    set({ nodes: applyNodeChanges(changes, get().nodes) as Node<WorkflowNodeData>[] }),
-  onEdgesChange: (changes) => set({ edges: applyEdgeChanges(changes, get().edges) }),
-  onConnect: (connection) =>
-    set({ edges: addEdge({ ...connection, animated: true }, get().edges) }),
+  setViewport: (viewport) => set({ viewport }),
+  onNodesChange: (changes) => {
+    const allowed = get().locked
+      ? changes.filter((change) => change.type === "select" || change.type === "dimensions")
+      : changes;
+    set({ nodes: applyNodeChanges(allowed, get().nodes) as Node<WorkflowNodeData>[] });
+  },
+  onEdgesChange: (changes) => {
+    const allowed = get().locked ? changes.filter((change) => change.type === "select") : changes;
+    set({ edges: applyEdgeChanges(allowed, get().edges) });
+  },
+  canConnect: (connection) => {
+    if (get().locked) return false;
+    if (!connection.source || !connection.target || connection.source === connection.target) return false;
+    const source = get().nodes.find((node) => node.id === connection.source);
+    const target = get().nodes.find((node) => node.id === connection.target);
+    if (!source || !target) return false;
+    const sourcePort = source.data.outputs?.find((port) => port.id === connection.sourceHandle);
+    const targetPort = target.data.inputs?.find((port) => port.id === connection.targetHandle);
+    if (!sourcePort || !targetPort || sourcePort.type !== targetPort.type) return false;
+    if (
+      get().edges.some(
+        (edge) =>
+          edge.source === connection.source &&
+          edge.target === connection.target &&
+          edge.sourceHandle === connection.sourceHandle &&
+          edge.targetHandle === connection.targetHandle,
+      )
+    )
+      return false;
+    if (
+      !targetPort.multiple &&
+      get().edges.some(
+        (edge) => edge.target === connection.target && edge.targetHandle === connection.targetHandle,
+      )
+    )
+      return false;
+    const visited = new Set<string>();
+    const queue = [connection.target];
+    while (queue.length) {
+      const current = queue.shift()!;
+      if (current === connection.source) return false;
+      if (visited.has(current)) continue;
+      visited.add(current);
+      get().edges.filter((edge) => edge.source === current).forEach((edge) => queue.push(edge.target));
+    }
+    return true;
+  },
+  onConnect: (connection) => {
+    if (get().locked) return;
+    if (!get().canConnect(connection)) return;
+    const source = get().nodes.find((node) => node.id === connection.source);
+    const sourceType = source?.data.outputs?.find((port) => port.id === connection.sourceHandle)?.type;
+    const stroke = {
+      text: "#8b7cf6",
+      image: "#4f8cff",
+      audio: "#22c58b",
+      video: "#f59e57",
+    }[sourceType ?? "text"];
+    set({
+      edges: addEdge(
+        {
+          ...connection,
+          animated: true,
+          style: { stroke, strokeWidth: 1.7 },
+        },
+        get().edges,
+      ),
+    });
+  },
+  setLocked: (locked) => set({ locked }),
   select: (selectedId) => set({ selectedId }),
   updateConfig: (id, key, value) =>
-    set({
+    !get().locked && set({
       nodes: get().nodes.map((node) =>
         node.id === id
           ? { ...node, data: { ...node.data, config: { ...node.data.config, [key]: value } } }
           : node,
       ),
     }),
-  addNode: (kind, label) =>
-    set({
+  updateConfigs: (id, values) =>
+    !get().locked && set({
+      nodes: get().nodes.map((node) =>
+        node.id === id
+          ? { ...node, data: { ...node.data, config: { ...node.data.config, ...values } } }
+          : node,
+      ),
+    }),
+  addNode: (kind) =>
+    !get().locked && set({
       nodes: [
         ...get().nodes,
         {
           id: `${kind}-${crypto.randomUUID().slice(0, 8)}`,
           type: "workflow",
-          position: { x: 280 + Math.random() * 300, y: 120 + Math.random() * 260 },
-          data: { label, description: "配置节点参数", config: { kind } },
+          position: { x: 260 + Math.random() * 360, y: 110 + Math.random() * 300 },
+          data: hydrateNodeData(kind),
         },
       ],
     }),
+  pasteNode: (node, anchorId) => {
+    if (get().locked) return node.id;
+    const anchor = get().nodes.find((item) => item.id === anchorId);
+    const id = `${node.data.kind}-${crypto.randomUUID().slice(0, 8)}`;
+    const position = anchor
+      ? { x: anchor.position.x + 32, y: anchor.position.y + 32 }
+      : { x: node.position.x + 32, y: node.position.y + 32 };
+    set({
+      nodes: [
+        ...get().nodes.map((item) => ({ ...item, selected: false })),
+        {
+          ...node,
+          id,
+          position,
+          selected: true,
+          data: structuredClone(node.data),
+        },
+      ],
+      selectedId: id,
+    });
+    return id;
+  },
+  deleteNode: (id) =>
+    !get().locked && set({
+      nodes: get().nodes.filter((node) => node.id !== id),
+      edges: get().edges.filter((edge) => edge.source !== id && edge.target !== id),
+      selectedId: get().selectedId === id ? undefined : get().selectedId,
+    }),
+  deleteEdge: (id) => {
+    if (!get().locked) set({ edges: get().edges.filter((edge) => edge.id !== id) });
+  },
   load: (definition) =>
     set({
-      nodes: definition.nodes,
+      nodes: definition.nodes.map((node) => normalizeNode(node)),
       edges: definition.edges,
       viewport: definition.viewport ?? { x: 0, y: 0, zoom: 1 },
+      selectedId: undefined,
     }),
   export: () => ({
     schemaVersion: 1,

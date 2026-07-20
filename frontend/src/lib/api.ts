@@ -22,3 +22,17 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) throw new ApiError(response.status, body.message ?? "请求失败");
   return body as T;
 }
+
+/** 上传媒体文件；浏览器负责生成 multipart boundary。 */
+export async function uploadMedia<T>(file: File): Promise<T> {
+  const data = new FormData();
+  data.append("file", file);
+  const response = await fetch(`${API_URL}/media/upload`, {
+    method: "POST",
+    credentials: "include",
+    body: data,
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new ApiError(response.status, body.message ?? "上传失败");
+  return body as T;
+}
