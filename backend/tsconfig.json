@@ -16,5 +16,5 @@
     "strictPropertyInitialization": false,
     "esModuleInterop": true
   },
-  "include": ["src/**/*.ts", "prisma/**/*.ts"]
+  "include": ["src/**/*.ts"]
 }

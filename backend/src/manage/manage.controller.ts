@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from "@nestjs/common";
 import { ManageAuthGuard } from "./manage-auth.guard";
 import { ManageService } from "./manage.service";
 
@@ -37,6 +47,49 @@ export class ManageController {
 
   @Get("models") models() {
     return this.manage.models();
+  }
+
+  @Get("assets/products") assetProducts(
+    @Query("query") query?: string,
+    @Query("status") status?: string,
+    @Query("page") page?: string,
+  ) {
+    return this.manage.assetProducts(query, status, Number(page));
+  }
+
+  @Get("assets/characters") assetCharacters(
+    @Query("query") query?: string,
+    @Query("status") status?: string,
+    @Query("page") page?: string,
+  ) {
+    return this.manage.assetCharacters(query, status, Number(page));
+  }
+
+  @Patch("assets/:type/:id/status") updateAssetStatus(
+    @Param("type") type: string,
+    @Param("id") id: string,
+    @Body() body: any,
+  ) {
+    return this.manage.updateAssetStatus(type, id, body);
+  }
+
+  @Get("product-categories") productCategories() {
+    return this.manage.productCategories();
+  }
+
+  @Post("product-categories") createProductCategory(@Body() body: any) {
+    return this.manage.createProductCategory(body);
+  }
+
+  @Patch("product-categories/:id") updateProductCategory(
+    @Param("id") id: string,
+    @Body() body: any,
+  ) {
+    return this.manage.updateProductCategory(id, body);
+  }
+
+  @Delete("product-categories/:id") deleteProductCategory(@Param("id") id: string) {
+    return this.manage.deleteProductCategory(id);
   }
 
   @Patch("models/:id/status") updateModelStatus(@Param("id") id: string, @Body() body: any) {

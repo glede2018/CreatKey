@@ -51,23 +51,170 @@ enum LedgerType {
   ADJUSTMENT
 }
 
+enum AssetStatus {
+  DRAFT
+  ACTIVE
+  DISABLED
+}
+
+enum AssetSource {
+  UPLOAD
+  AI_GENERATED
+  REMOTE_IMPORT
+}
+
+enum ProductImageRole {
+  COVER
+  DETAIL
+  REFERENCE
+}
+
+enum CharacterImageAngle {
+  AVATAR
+  FRONT
+  LEFT
+  RIGHT
+  HALF_BODY
+  FULL_BODY
+  OTHER
+}
+
 model User {
-  id                 String         @id @default(uuid())
-  countryCode        String         @default("+86")
-  phone              String         @unique
+  id                 String           @id @default(uuid())
+  countryCode        String           @default("+86")
+  phone              String           @unique
   nickname           String
   avatarUrl          String?
   roles              Role[]
   profileInitialized Boolean?
-  sessionVersion     Int            @default(0)
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
+  sessionVersion     Int              @default(0)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
   session            Session?
   pointAccount       PointAccount?
   workflows          Workflow[]
   runs               WorkflowRun[]
   payments           PaymentOrder[]
   ledger             PointLedger[]
+  assetFiles         AssetFile[]
+  products           ProductAsset[]
+  characters         CharacterAsset[]
+}
+
+/// 商品三级分类；通过 parentId 自关联组成目录树。
+model ProductCategory {
+  id        String            @id @default(uuid())
+  code      String            @unique
+  name      String
+  level     Int
+  parentId  String?
+  sortOrder Int               @default(0)
+  active    Boolean           @default(true)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  parent    ProductCategory?  @relation("ProductCategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children  ProductCategory[] @relation("ProductCategoryTree")
+  products  ProductAsset[]
+
+  @@unique([parentId, name])
+  @@index([parentId, active, sortOrder])
+  @@index([level, active, sortOrder])
+}
+
+/// 可被商品、形象和工作流复用的媒体文件记录。
+model AssetFile {
+  id                  String           @id
+  ownerId             String?
+  originalName        String
+  mediaType           String
+  mimeType            String
+  size                Int
+  source              AssetSource      @default(UPLOAD)
+  createdAt           DateTime         @default(now())
+  deletedAt           DateTime?
+  owner               User?            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  productImages       ProductImage[]
+  characterImages     CharacterImage[]
+  characterReferences CharacterAsset[] @relation("CharacterReference")
+
+  @@index([ownerId, createdAt])
+  @@index([deletedAt])
+}
+
+model ProductAsset {
+  id              String          @id @default(uuid())
+  ownerId         String
+  categoryId      String
+  title           String
+  sellingPoints   Json
+  audienceProfile String?
+  description     String?
+  sourceUrl       String?
+  tags            Json
+  status          AssetStatus     @default(ACTIVE)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  deletedAt       DateTime?
+  owner           User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  category        ProductCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  images          ProductImage[]
+
+  @@index([ownerId, status, updatedAt])
+  @@index([categoryId, status])
+  @@index([deletedAt])
+}
+
+model ProductImage {
+  id        String           @id @default(uuid())
+  productId String
+  fileId    String
+  role      ProductImageRole @default(DETAIL)
+  sortOrder Int              @default(0)
+  product   ProductAsset     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  file      AssetFile        @relation(fields: [fileId], references: [id], onDelete: Restrict)
+
+  @@unique([productId, fileId])
+  @@index([fileId])
+}
+
+model CharacterAsset {
+  id               String           @id @default(uuid())
+  ownerId          String
+  referenceFileId  String?
+  name             String
+  description      String?
+  generationPrompt String?
+  modelId          String?
+  voiceId          String?
+  voiceName        String?
+  tags             Json
+  source           AssetSource      @default(UPLOAD)
+  isDefault        Boolean          @default(false)
+  status           AssetStatus      @default(ACTIVE)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  deletedAt        DateTime?
+  owner            User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  referenceFile    AssetFile?       @relation("CharacterReference", fields: [referenceFileId], references: [id], onDelete: Restrict)
+  images           CharacterImage[]
+
+  @@index([ownerId, status, updatedAt])
+  @@index([ownerId, isDefault])
+  @@index([referenceFileId])
+  @@index([deletedAt])
+}
+
+model CharacterImage {
+  id          String              @id @default(uuid())
+  characterId String
+  fileId      String
+  angle       CharacterImageAngle @default(OTHER)
+  sortOrder   Int                 @default(0)
+  character   CharacterAsset      @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  file        AssetFile           @relation(fields: [fileId], references: [id], onDelete: Restrict)
+
+  @@unique([characterId, fileId])
+  @@index([fileId])
 }
 
 model RechargePackage {

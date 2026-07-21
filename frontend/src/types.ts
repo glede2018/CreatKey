@@ -53,6 +53,51 @@ export interface MediaAsset {
   size: number;
   url: string;
 }
+export type AssetStatus = "DRAFT" | "ACTIVE" | "DISABLED";
+export interface ProductCategory {
+  id: string;
+  code: string;
+  name: string;
+  level: number;
+  parentId?: string;
+  children: ProductCategory[];
+}
+export interface ProductAsset {
+  id: string;
+  title: string;
+  categoryId: string;
+  category: ProductCategory;
+  sellingPoints: string[];
+  audienceProfile?: string;
+  description?: string;
+  sourceUrl?: string;
+  tags: string[];
+  status: AssetStatus;
+  updatedAt: string;
+  images: Array<{ id: string; role: "COVER" | "DETAIL" | "REFERENCE"; file: MediaAsset }>;
+}
+export interface CharacterAsset {
+  id: string;
+  name: string;
+  referenceFile?: MediaAsset;
+  description?: string;
+  generationPrompt?: string;
+  modelId?: string;
+  voiceId?: string;
+  voiceName?: string;
+  tags: string[];
+  source: "UPLOAD" | "AI_GENERATED" | "REMOTE_IMPORT";
+  isDefault: boolean;
+  status: AssetStatus;
+  updatedAt: string;
+  images: Array<{ id: string; angle: string; file: MediaAsset }>;
+}
+export interface PageData<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
 export interface ConnectedInputPreview {
   edgeId: string;
   sourceNodeId: string;

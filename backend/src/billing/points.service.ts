@@ -73,6 +73,62 @@ export class PointsService {
     });
   }
 
+  /** 工作流之外的单次 AI 调用直接扣费；referenceId 保证重试时幂等。 */
+  async consumeDirect(userId: string, referenceId: string, amount: number, description: string) {
+    if (amount <= 0) return;
+    await this.prisma.$transaction(async (tx) => {
+      const exists = await tx.pointLedger.findUnique({
+        where: { type_referenceId: { type: LedgerType.CONSUME, referenceId } },
+      });
+      if (exists) return;
+      const account = await tx.pointAccount.findUniqueOrThrow({ where: { userId } });
+      if (account.balance < amount) throw new BadRequestException(`Keys 不足，需要 ${amount} Keys`);
+      const updated = await tx.pointAccount.update({
+        where: { userId },
+        data: { balance: { decrement: amount } },
+      });
+      await tx.pointLedger.create({
+        data: {
+          userId,
+          type: LedgerType.CONSUME,
+          amount: -amount,
+          balanceAfter: updated.balance,
+          referenceId,
+          description,
+        },
+      });
+    });
+  }
+
+  /** 单次 AI 调用失败时幂等退款。 */
+  async refundDirect(userId: string, referenceId: string, amount: number, description: string) {
+    if (amount <= 0) return;
+    await this.prisma.$transaction(async (tx) => {
+      const consume = await tx.pointLedger.findUnique({
+        where: { type_referenceId: { type: LedgerType.CONSUME, referenceId } },
+      });
+      const refundId = `${referenceId}:refund`;
+      const refunded = await tx.pointLedger.findUnique({
+        where: { type_referenceId: { type: LedgerType.REFUND, referenceId: refundId } },
+      });
+      if (!consume || refunded) return;
+      const updated = await tx.pointAccount.update({
+        where: { userId },
+        data: { balance: { increment: amount } },
+      });
+      await tx.pointLedger.create({
+        data: {
+          userId,
+          type: LedgerType.REFUND,
+          amount,
+          balanceAfter: updated.balance,
+          referenceId: refundId,
+          description,
+        },
+      });
+    });
+  }
+
   /** 幂等地把已支付订单对应的 Keys 充入用户账户。 */
   async recharge(userId: string, orderId: string, keys: number) {
     await this.prisma.$transaction(async (tx) => {

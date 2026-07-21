@@ -11,6 +11,7 @@ import { ManageModule } from "./manage/manage.module";
 import { WorkflowsModule } from "./workflows/workflows.module";
 import { MediaModule } from "./media/media.module";
 import { AiModule } from "./ai/ai.module";
+import { AssetsModule } from "./assets/assets.module";
 
 /** 将 REDIS_URL 转换为 BullMQ/ioredis 使用的连接参数。 */
 export function redisConnection(): RedisOptions {
@@ -37,6 +38,7 @@ export function redisConnection(): RedisOptions {
     ManageModule,
     MediaModule,
     AiModule,
+    AssetsModule,
   ],
 })
 export class AppModule {}

@@ -1,8 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { LedgerType, PaymentStatus, Prisma, Role, RunStatus } from "@prisma/client";
+import { AssetStatus, LedgerType, PaymentStatus, Prisma, Role, RunStatus } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { PrismaService } from "../database/prisma.service";
 import { aiModelCatalog } from "../ai/model-catalog";
+import { MediaService } from "../media/media.service";
 
 const DAY = 86_400_000;
 const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -11,7 +12,10 @@ const dateKey = (date: Date) =>
 
 @Injectable()
 export class ManageService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly media: MediaService,
+  ) {}
 
   /** 汇总全站核心指标与最近七天趋势。 */
   async overview() {
@@ -250,6 +254,193 @@ export class ManageService {
     });
   }
 
+  async assetProducts(query = "", status?: string, pageValue = 1) {
+    const page = Math.max(1, Number(pageValue) || 1);
+    const pageSize = 15;
+    const parsedStatus = Object.values(AssetStatus).includes(status as AssetStatus)
+      ? (status as AssetStatus)
+      : undefined;
+    const where: Prisma.ProductAssetWhereInput = {
+      deletedAt: null,
+      ...(parsedStatus ? { status: parsedStatus } : {}),
+      ...(query.trim()
+        ? {
+            OR: [
+              { title: { contains: query.trim(), mode: "insensitive" } },
+              { owner: { nickname: { contains: query.trim(), mode: "insensitive" } } },
+              { owner: { phone: { contains: query.trim() } } },
+            ],
+          }
+        : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.productAsset.findMany({
+        where,
+        orderBy: { updatedAt: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: {
+          owner: { select: { id: true, nickname: true, phone: true } },
+          category: { select: { id: true, name: true } },
+          images: { include: { file: true }, orderBy: { sortOrder: "asc" } },
+        },
+      }),
+      this.prisma.productAsset.count({ where }),
+    ]);
+    return {
+      items: items.map((item) => ({
+        ...item,
+        images: item.images.map((image) => ({
+          ...image,
+          file: this.media.publicAsset(image.file),
+        })),
+      })),
+      total,
+      page,
+      pageSize,
+    };
+  }
+
+  async assetCharacters(query = "", status?: string, pageValue = 1) {
+    const page = Math.max(1, Number(pageValue) || 1);
+    const pageSize = 15;
+    const parsedStatus = Object.values(AssetStatus).includes(status as AssetStatus)
+      ? (status as AssetStatus)
+      : undefined;
+    const where: Prisma.CharacterAssetWhereInput = {
+      deletedAt: null,
+      ...(parsedStatus ? { status: parsedStatus } : {}),
+      ...(query.trim()
+        ? {
+            OR: [
+              { name: { contains: query.trim(), mode: "insensitive" } },
+              { owner: { nickname: { contains: query.trim(), mode: "insensitive" } } },
+              { owner: { phone: { contains: query.trim() } } },
+            ],
+          }
+        : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.characterAsset.findMany({
+        where,
+        orderBy: { updatedAt: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: {
+          owner: { select: { id: true, nickname: true, phone: true } },
+          images: { include: { file: true }, orderBy: { sortOrder: "asc" } },
+        },
+      }),
+      this.prisma.characterAsset.count({ where }),
+    ]);
+    return {
+      items: items.map((item) => ({
+        ...item,
+        images: item.images.map((image) => ({
+          ...image,
+          file: this.media.publicAsset(image.file),
+        })),
+      })),
+      total,
+      page,
+      pageSize,
+    };
+  }
+
+  async updateAssetStatus(type: string, id: string, body: Record<string, unknown>) {
+    const status = body.status;
+    if (status !== AssetStatus.ACTIVE && status !== AssetStatus.DISABLED)
+      throw new BadRequestException("资产状态无效");
+    if (type === "products") {
+      const existing = await this.prisma.productAsset.findFirst({ where: { id, deletedAt: null } });
+      if (!existing) throw new NotFoundException("商品不存在");
+      return this.prisma.productAsset.update({
+        where: { id },
+        data: { status: status as AssetStatus },
+      });
+    }
+    if (type === "characters") {
+      const existing = await this.prisma.characterAsset.findFirst({
+        where: { id, deletedAt: null },
+      });
+      if (!existing) throw new NotFoundException("形象不存在");
+      return this.prisma.characterAsset.update({
+        where: { id },
+        data: { status: status as AssetStatus },
+      });
+    }
+    throw new BadRequestException("资产类型无效");
+  }
+
+  /** 返回完整分类树，运营侧可同时查看停用分类及商品引用数量。 */
+  async productCategories() {
+    const items = await this.prisma.productCategory.findMany({
+      orderBy: [{ level: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
+      include: { _count: { select: { products: true } } },
+    });
+    return items
+      .filter((item) => item.level === 1)
+      .map((root) => ({
+        ...root,
+        children: items
+          .filter((item) => item.parentId === root.id)
+          .map((branch) => ({
+            ...branch,
+            children: items
+              .filter((item) => item.parentId === branch.id)
+              .map((leaf) => ({ ...leaf, children: [] })),
+          })),
+      }));
+  }
+
+  /** 新增根分类或子分类，层级由上级自动推导且最多三级。 */
+  async createProductCategory(body: Record<string, unknown>) {
+    const input = this.productCategoryInput(body);
+    const parentId = this.optionalId(body.parentId);
+    const parent = parentId
+      ? await this.prisma.productCategory.findUnique({ where: { id: parentId } })
+      : null;
+    if (parentId && !parent) throw new NotFoundException("上级分类不存在");
+    if (parent && parent.level >= 3) throw new BadRequestException("商品分类最多支持三级");
+    await this.ensureCategoryNameAvailable(input.name, parentId);
+    return this.prisma.productCategory.create({
+      data: {
+        ...input,
+        code: `category-${randomUUID()}`,
+        level: parent ? parent.level + 1 : 1,
+        parentId,
+      },
+      include: { _count: { select: { products: true } } },
+    });
+  }
+
+  /** 编辑分类基础信息；不在编辑时移动层级，以避免产生循环目录。 */
+  async updateProductCategory(id: string, body: Record<string, unknown>) {
+    const existing = await this.prisma.productCategory.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException("商品分类不存在");
+    const input = this.productCategoryInput(body);
+    await this.ensureCategoryNameAvailable(input.name, existing.parentId, id);
+    return this.prisma.productCategory.update({
+      where: { id },
+      data: input,
+      include: { _count: { select: { products: true } } },
+    });
+  }
+
+  /** 仅允许删除没有子分类且未被任何商品引用的分类。 */
+  async deleteProductCategory(id: string) {
+    const existing = await this.prisma.productCategory.findUnique({
+      where: { id },
+      include: { _count: { select: { children: true, products: true } } },
+    });
+    if (!existing) throw new NotFoundException("商品分类不存在");
+    if (existing._count.children > 0) throw new BadRequestException("请先删除该分类下的子分类");
+    if (existing._count.products > 0)
+      throw new BadRequestException("该分类已有商品引用，无法删除，可改为停用");
+    await this.prisma.productCategory.delete({ where: { id } });
+    return { id };
+  }
+
   /** 上下架模型；状态会同时影响创作端目录和实际执行。 */
   async updateModelStatus(modelId: string, body: Record<string, unknown>) {
     if (!aiModelCatalog.some((model) => model.id === modelId))
@@ -311,6 +502,32 @@ export class ManageService {
     if (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > 9999)
       throw new BadRequestException("排序须为 0-9999 的整数");
     return { name, keys, amountFen, sortOrder, active: body.active !== false };
+  }
+
+  private productCategoryInput(body: Record<string, unknown>) {
+    const name = String(body.name ?? "").trim();
+    const sortOrder = Number(body.sortOrder ?? 0);
+    if (!name || name.length > 30) throw new BadRequestException("分类名称须为 1-30 个字符");
+    if (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > 9999)
+      throw new BadRequestException("排序须为 0-9999 的整数");
+    return { name, sortOrder, active: body.active !== false };
+  }
+
+  private optionalId(value: unknown) {
+    const id = String(value ?? "").trim();
+    return id || null;
+  }
+
+  private async ensureCategoryNameAvailable(
+    name: string,
+    parentId: string | null,
+    excludeId?: string,
+  ) {
+    const duplicate = await this.prisma.productCategory.findFirst({
+      where: { name, parentId, ...(excludeId ? { id: { not: excludeId } } : {}) },
+      select: { id: true },
+    });
+    if (duplicate) throw new BadRequestException("同一上级下已存在同名分类");
   }
 
   /** 运营人员人工增减 Keys，同时写入不可丢失的账本记录。 */

@@ -1,5 +1,6 @@
 /** 运营后台支持的一级页面。 */
-export type ManageSection = "overview" | "users" | "runs" | "payments" | "models" | "packages";
+export type ManageSection =
+  "overview" | "users" | "runs" | "payments" | "assets" | "categories" | "models" | "packages";
 
 export interface OverviewData {
   metrics: {
@@ -81,4 +82,46 @@ export interface PageData<T> {
   total: number;
   page: number;
   pageSize: number;
+}
+
+export type ManageAssetStatus = "DRAFT" | "ACTIVE" | "DISABLED";
+export interface ManageAssetFile {
+  id: string;
+  name: string;
+  type: "image" | "audio" | "video";
+  mimeType: string;
+  size: number;
+  url: string;
+}
+export interface ManageProductAsset {
+  id: string;
+  title: string;
+  status: ManageAssetStatus;
+  updatedAt: string;
+  owner: { id: string; nickname: string; phone: string };
+  category: { id: string; name: string };
+  images: Array<{ file: ManageAssetFile }>;
+}
+export interface ManageCharacterAsset {
+  id: string;
+  name: string;
+  status: ManageAssetStatus;
+  source: string;
+  voiceName?: string;
+  isDefault: boolean;
+  updatedAt: string;
+  owner: { id: string; nickname: string; phone: string };
+  images: Array<{ file: ManageAssetFile }>;
+}
+
+export interface ManageProductCategory {
+  id: string;
+  code: string;
+  name: string;
+  level: number;
+  parentId?: string;
+  sortOrder: number;
+  active: boolean;
+  _count: { products: number };
+  children: ManageProductCategory[];
 }

@@ -15,12 +15,16 @@ import {
   Users,
   Workflow,
   Bot,
+  Images,
+  FolderTree,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ManageStatCard } from "@/components/manage-stat-card";
 import { PointsAdjustDialog } from "@/components/points-adjust-dialog";
 import { RechargePackages } from "@/components/recharge-packages";
 import { ModelManagement } from "@/components/model-management";
+import { AssetManagement } from "@/components/asset-management";
+import { CategoryManagement } from "@/components/category-management";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,6 +51,8 @@ const navItems = [
   { id: "users", label: "用户管理", icon: Users },
   { id: "runs", label: "运行记录", icon: Activity },
   { id: "payments", label: "充值订单", icon: CircleDollarSign },
+  { id: "assets", label: "资产管理", icon: Images },
+  { id: "categories", label: "分类管理", icon: FolderTree },
   { id: "models", label: "模型管理", icon: Bot },
   { id: "packages", label: "Keys 套餐", icon: KeyRound },
 ] as const;
@@ -104,7 +110,12 @@ export function ManagePage({ admin, onBack, onLogout }: ManagePageProps) {
   const [revision, setRevision] = useState(0);
 
   useEffect(() => {
-    if (section === "packages" || section === "models") {
+    if (
+      section === "packages" ||
+      section === "models" ||
+      section === "assets" ||
+      section === "categories"
+    ) {
       setLoading(false);
       setLoadError(undefined);
       return;
@@ -309,6 +320,10 @@ export function ManagePage({ admin, onBack, onLogout }: ManagePageProps) {
             <RechargePackages />
           ) : section === "models" ? (
             <ModelManagement />
+          ) : section === "assets" ? (
+            <AssetManagement />
+          ) : section === "categories" ? (
+            <CategoryManagement />
           ) : loading && !overview && !users && !runs && !payments ? (
             <div className="grid h-80 place-items-center text-zinc-600">
               <Loader2 className="animate-spin" size={22} />

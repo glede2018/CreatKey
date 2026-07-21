@@ -1,7 +1,19 @@
-import { BadRequestException, Controller, Get, Param, Post, Res, UploadedFile, UseGuards, UseInterceptors } from "@nestjs/common";
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Res,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
 import { AuthGuard } from "../auth/auth.guard";
+import { CurrentUser } from "../auth/current-user.decorator";
+import type { AuthUser } from "../auth/auth.types";
 import { MediaService } from "./media.service";
 
 @Controller("media")
@@ -11,9 +23,12 @@ export class MediaController {
   @Post("upload")
   @UseGuards(AuthGuard)
   @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 500 * 1024 * 1024 } }))
-  upload(@UploadedFile() file?: { originalname: string; mimetype: string; size: number; buffer: Buffer }) {
+  upload(
+    @CurrentUser() user: AuthUser,
+    @UploadedFile() file?: { originalname: string; mimetype: string; size: number; buffer: Buffer },
+  ) {
     if (!file) throw new BadRequestException("请选择文件");
-    return this.media.saveUpload(file);
+    return this.media.saveUpload(file, user.id);
   }
 
   @Get(":id")
@@ -28,5 +43,21 @@ export class MediaController {
 
 const extMime = (id: string) => {
   const ext = id.split(".").pop()?.toLowerCase();
-  return ({ png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif", mp3: "audio/mpeg", wav: "audio/wav", m4a: "audio/mp4", mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime" } as Record<string, string>)[ext ?? ""] ?? "application/octet-stream";
+  return (
+    (
+      {
+        png: "image/png",
+        jpg: "image/jpeg",
+        jpeg: "image/jpeg",
+        webp: "image/webp",
+        gif: "image/gif",
+        mp3: "audio/mpeg",
+        wav: "audio/wav",
+        m4a: "audio/mp4",
+        mp4: "video/mp4",
+        webm: "video/webm",
+        mov: "video/quicktime",
+      } as Record<string, string>
+    )[ext ?? ""] ?? "application/octet-stream"
+  );
 };
