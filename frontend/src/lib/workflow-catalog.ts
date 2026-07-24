@@ -59,7 +59,7 @@ export const workflowNodeCatalog: WorkflowNodeDefinition[] = [
     description: "将语音转换为文本",
     inputs: [{ id: "audio", label: "音频", type: "audio", required: true }],
     outputs: textOutput,
-    defaultConfig: { model: "qwen3-asr-flash", language: "auto", enableItn: true },
+    defaultConfig: { model: "" },
   },
   {
     kind: "ai.multimodal-to-text",
@@ -71,13 +71,7 @@ export const workflowNodeCatalog: WorkflowNodeDefinition[] = [
       { id: "images", label: "图片", type: "image", multiple: true },
     ],
     outputs: textOutput,
-    defaultConfig: {
-      model: "qwen3.5-plus",
-      text: "",
-      systemPrompt: "你是一个专业的创意助手。",
-      temperature: 0.7,
-      maxTokens: 2048,
-    },
+    defaultConfig: { model: "" },
   },
   {
     kind: "ai.image-to-image",
@@ -89,13 +83,7 @@ export const workflowNodeCatalog: WorkflowNodeDefinition[] = [
       { id: "prompt", label: "提示词", type: "text", required: true },
     ],
     outputs: imageOutput,
-    defaultConfig: {
-      model: "qwen-image-2.0-pro",
-      prompt: "",
-      ratio: "1:1",
-      count: 1,
-      promptExtend: true,
-    },
+    defaultConfig: { model: "" },
   },
   {
     kind: "ai.multi-image-to-image",
@@ -107,13 +95,7 @@ export const workflowNodeCatalog: WorkflowNodeDefinition[] = [
       { id: "prompt", label: "提示词", type: "text", required: true },
     ],
     outputs: imageOutput,
-    defaultConfig: {
-      model: "qwen-image-2.0-pro",
-      prompt: "",
-      ratio: "1:1",
-      count: 1,
-      promptExtend: true,
-    },
+    defaultConfig: { model: "" },
   },
   {
     kind: "ai.text-to-image",
@@ -122,13 +104,7 @@ export const workflowNodeCatalog: WorkflowNodeDefinition[] = [
     description: "根据文本生成图片",
     inputs: [{ id: "prompt", label: "提示词", type: "text", required: true }],
     outputs: imageOutput,
-    defaultConfig: {
-      model: "qwen-image-2.0-pro",
-      prompt: "",
-      ratio: "1:1",
-      count: 1,
-      promptExtend: true,
-    },
+    defaultConfig: { model: "" },
   },
   {
     kind: "ai.music-generation",
@@ -137,14 +113,7 @@ export const workflowNodeCatalog: WorkflowNodeDefinition[] = [
     description: "根据提示词生成音乐",
     inputs: [{ id: "prompt", label: "提示词", type: "text", required: true }],
     outputs: audioOutput,
-    defaultConfig: {
-      model: "fun-music-v1",
-      prompt: "",
-      lyrics: "",
-      instrumental: true,
-      gender: "female",
-      format: "mp3",
-    },
+    defaultConfig: { model: "" },
   },
   {
     kind: "ai.text-to-speech",
@@ -153,7 +122,7 @@ export const workflowNodeCatalog: WorkflowNodeDefinition[] = [
     description: "将文本转换为语音",
     inputs: [{ id: "text", label: "文本", type: "text", required: true }],
     outputs: audioOutput,
-    defaultConfig: { model: "qwen3-tts-flash", text: "", voice: "Cherry", languageType: "Auto" },
+    defaultConfig: { model: "" },
   },
   {
     kind: "ai.text-to-video",
@@ -162,13 +131,7 @@ export const workflowNodeCatalog: WorkflowNodeDefinition[] = [
     description: "根据文本生成视频",
     inputs: [{ id: "prompt", label: "提示词", type: "text", required: true }],
     outputs: videoOutput,
-    defaultConfig: {
-      model: "wan2.7-t2v",
-      prompt: "",
-      ratio: "16:9",
-      duration: 5,
-      resolution: "1080P",
-    },
+    defaultConfig: { model: "" },
   },
   {
     kind: "ai.image-to-video",
@@ -180,7 +143,91 @@ export const workflowNodeCatalog: WorkflowNodeDefinition[] = [
       { id: "prompt", label: "提示词", type: "text", required: true },
     ],
     outputs: videoOutput,
-    defaultConfig: { model: "wan2.7-i2v", prompt: "", duration: 5, resolution: "720P" },
+    defaultConfig: { model: "" },
+  },
+  {
+    kind: "ai.text-to-vector",
+    label: "文生矢量图",
+    category: "image",
+    description: "根据文本生成矢量图",
+    inputs: [{ id: "prompt", label: "提示词", type: "text", required: true }],
+    outputs: imageOutput,
+    defaultConfig: { model: "" },
+  },
+  {
+    kind: "ai.image-to-vector",
+    label: "图片转矢量图",
+    category: "image",
+    description: "将图片转换为矢量图",
+    inputs: [{ id: "image", label: "图片", type: "image", required: true }],
+    outputs: imageOutput,
+    defaultConfig: { model: "" },
+  },
+  {
+    kind: "ai.motion-control",
+    label: "动作控制",
+    category: "video",
+    description: "使用参考动作驱动图片生成视频",
+    inputs: [
+      { id: "image", label: "图片", type: "image", required: true },
+      { id: "video", label: "动作视频", type: "video", required: true },
+    ],
+    outputs: videoOutput,
+    defaultConfig: { model: "" },
+  },
+  {
+    kind: "ai.video-processing",
+    label: "视频处理",
+    category: "video",
+    description: "对视频执行增强或转换处理",
+    inputs: [{ id: "video", label: "视频", type: "video", required: true }],
+    outputs: videoOutput,
+    defaultConfig: { model: "" },
+  },
+  {
+    kind: "ai.video-edit",
+    label: "视频编辑",
+    category: "video",
+    description: "根据提示词编辑视频",
+    inputs: [
+      { id: "video", label: "视频", type: "video", required: true },
+      { id: "prompt", label: "提示词", type: "text" },
+    ],
+    outputs: videoOutput,
+    defaultConfig: { model: "" },
+  },
+  {
+    kind: "ai.reference-to-video",
+    label: "参考图生视频",
+    category: "video",
+    description: "根据一张或多张参考图生成视频",
+    inputs: [
+      { id: "images", label: "参考图", type: "image", required: true, multiple: true },
+      { id: "prompt", label: "提示词", type: "text" },
+    ],
+    outputs: videoOutput,
+    defaultConfig: { model: "" },
+  },
+  {
+    kind: "ai.video-extend",
+    label: "视频延长",
+    category: "video",
+    description: "延长已有视频内容",
+    inputs: [
+      { id: "video", label: "视频", type: "video", required: true },
+      { id: "prompt", label: "提示词", type: "text" },
+    ],
+    outputs: videoOutput,
+    defaultConfig: { model: "" },
+  },
+  {
+    kind: "ai.video-resize",
+    label: "视频尺寸调整",
+    category: "video",
+    description: "调整视频尺寸或比例",
+    inputs: [{ id: "video", label: "视频", type: "video", required: true }],
+    outputs: videoOutput,
+    defaultConfig: { model: "" },
   },
 ];
 
@@ -214,19 +261,62 @@ export function nodeExecutionKeys(
   kind: string,
   modelId?: string,
   models: AiModelDefinition[] = [],
+  config: Record<string, unknown> = {},
 ) {
   if (kind.startsWith("input.")) return 0;
-  const configured = models.find(
-    (model) => model.id === modelId && model.capabilities.includes(kind),
-  )?.capabilityKeys[kind];
+  const model = models.find((model) => model.id === modelId && model.capabilities.includes(kind));
+  let configured = model?.capabilityKeys[kind];
+  if (Number.isInteger(configured) && configured !== undefined && configured >= 0) {
+    for (const field of model?.fields ?? []) {
+      const actual = config[field.key] ?? nestedConfigValue(config, field.key) ?? field.default;
+      const option = field.options?.find((item) => item.value === actual);
+      const keysValue = Number(option?.keysValue ?? 0);
+      if (!option || option.keysMode === "NONE" || !Number.isInteger(keysValue) || keysValue < 0)
+        continue;
+      configured = option.keysMode === "SET" ? keysValue : configured + keysValue;
+    }
+  }
+  const matchedRule = model?.pricingRules?.find((rule) => pricingRuleMatches(rule, config));
+  configured = matchedRule?.keys ?? configured;
   if (Number.isInteger(configured) && configured !== undefined && configured >= 0) {
     return configured;
   }
-  if (["ai.image-to-image", "ai.multi-image-to-image"].includes(kind)) return 20;
-  if (kind.includes("video")) return 30;
-  if (kind.includes("image")) return 10;
-  if (kind.includes("audio") || kind.includes("speech") || kind.includes("music")) return 5;
-  return kind === "transform.template" ? 1 : kind.startsWith("ai.") ? 2 : 0;
+  return kind === "transform.template" ? 1 : 0;
+}
+
+function nestedConfigValue(config: Record<string, unknown>, field: string) {
+  return field
+    .split(".")
+    .reduce<unknown>(
+      (value, key) =>
+        value && typeof value === "object" ? (value as Record<string, unknown>)[key] : undefined,
+      config,
+    );
+}
+
+function pricingRuleMatches(
+  rule: NonNullable<AiModelDefinition["pricingRules"]>[number],
+  config: Record<string, unknown>,
+) {
+  const actual =
+    config[rule.field] ??
+    rule.field
+      .split(".")
+      .reduce<unknown>(
+        (value, key) =>
+          value && typeof value === "object" ? (value as Record<string, unknown>)[key] : undefined,
+        config,
+      );
+  if (rule.operator === "EQ") return actual === rule.value;
+  if (rule.operator === "NEQ") return actual !== rule.value;
+  if (rule.operator === "IN") return Array.isArray(rule.value) && rule.value.includes(actual);
+  const left = Number(actual);
+  const right = Number(rule.value);
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
+  if (rule.operator === "GT") return left > right;
+  if (rule.operator === "GTE") return left >= right;
+  if (rule.operator === "LT") return left < right;
+  return left <= right;
 }
 
 export function hydrateNodeData(kind: string): WorkflowNodeData {

@@ -12,22 +12,23 @@ TapNow 风格的 AI 工作流创作平台，包含纯前端 `frontend` 和 Node.
 
 默认启用模拟短信和模拟支付，短信登录支持 `+86` 中国大陆手机号，开发万能验证码为 `888888`。
 
-## AI 工作流与百炼
+## AI 工作流与 Akool
 
 工作流中的文本、图片、音频和视频输入会保存到 `LOCAL_UPLOAD_DIR`（默认项目根目录下的
 `uploads`），Docker 环境由 `uploads_data` 数据卷在 API 与 Worker 之间共享。媒体存储通过统一
 Provider 接口访问，后续可直接增加阿里云 OSS 实现。
 
-调用阿里云百炼前，在 `.env` 中配置：
+调用 Akool MaaS 前，在 `.env` 中配置：
 
 ```bash
-DASHSCOPE_API_KEY="新创建的 API Key"
-DASHSCOPE_BASE_URL="创建 API Key 时显示的 OpenAI compatible API Host"
+AKOOL_API_KEY="Akool API Key"
+AKOOL_API_BASE_URL="https://akool.com/interface/maas-backend/api/v1"
 ```
 
-新版 `sk-ws` Key 应使用其业务空间专属 API Host。请勿把 API Key 写入源码或提交到 Git。
-图生视频要求百炼能够访问来源图片；本地开发时需要把 `PUBLIC_API_URL` 配置为可公网访问的 API
-地址，上线切换 OSS 后由 OSS URL 自动满足该条件。
+请勿把 API Key 写入源码或提交到 Git。执行 `npm run prisma:seed -w backend` 会同步内置的
+Akool 正式站模型清单；首次导入的模型统一为下架、基础 Keys 为 0，需要在 manage 后台完成
+Keys 定价后再上架。Akool 必须能够访问图片、音频和视频输入的 URL，本地开发时需要把
+`PUBLIC_API_URL` 配置为可公网访问的 API 地址。
 
 点击“执行全部”后，后端会校验数据库中的工作流 JSON 并通过 `activeRunId` 锁定工作流；锁定期间
 API 会拒绝保存，画布只允许查看、缩放和取消执行。BullMQ 按 DAG 依赖调度节点，独立分支最多
@@ -43,7 +44,9 @@ API 会拒绝保存，画布只允许查看、缩放和取消执行。BullMQ 按
 运营后台是与 `frontend` 同级的独立 `manage` 应用，开发地址为
 `http://localhost:5174`。首次启动时，后端会在空管理员表中根据 `.env` 的
 `ADMIN_USERNAME` 和 `ADMIN_PASSWORD` 创建管理员。开发默认账号为 `admin`，密码为
-`CreatKey@2026`，生产部署前必须修改。运营后台提供数据概览、用户与 Keys 管理、工作流运行记录、充值套餐配置和订单查询。
+`CreatKey@2026`，生产部署前必须修改。运营后台提供数据概览、用户与 Keys 管理、工作流运行记录、
+充值套餐配置和订单查询。模型管理包含 Akool 参数结构、基础/参数 Keys 规则、上下架，以及每次
+调用的请求参数、Keys 和 Akool 实际 USD 扣费记录。
 
 ## Docker 部署
 

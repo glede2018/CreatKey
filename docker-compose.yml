@@ -32,9 +32,8 @@ x-backend-env: &backend-env
   STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-creatkey}
   STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-creatkey-secret}
   LOCAL_UPLOAD_DIR: /app/uploads
-  DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
-  DASHSCOPE_BASE_URL: ${DASHSCOPE_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
-  DASHSCOPE_API_BASE_URL: ${DASHSCOPE_API_BASE_URL:-}
+  AKOOL_API_KEY: ${AKOOL_API_KEY:-}
+  AKOOL_API_BASE_URL: ${AKOOL_API_BASE_URL:-https://akool.com/interface/maas-backend/api/v1}
 
 services:
   postgres:
@@ -87,7 +86,11 @@ services:
       dockerfile: backend/Dockerfile
     environment: *backend-env
     command:
-      ["npx", "prisma", "db", "push", "--schema", "backend/prisma/schema.prisma", "--skip-generate"]
+      [
+        "sh",
+        "-c",
+        "npx prisma db push --schema backend/prisma/schema.prisma --skip-generate --accept-data-loss && npm run prisma:seed -w backend",
+      ]
     depends_on:
       postgres:
         condition: service_healthy

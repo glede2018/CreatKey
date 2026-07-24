@@ -79,9 +79,10 @@ function localInputCount(
 ) {
   const value = node.data.config[port.id];
   if (port.type === "text") return typeof value === "string" && value.trim() ? 1 : 0;
-  if (port.id === "images") {
+  if (Array.isArray(value)) return value.length;
+  if (value) return 1;
+  if (port.id === "images")
     return Array.isArray(node.data.config.images) ? node.data.config.images.length : 0;
-  }
   return node.data.config.media ? 1 : 0;
 }
 
@@ -109,10 +110,14 @@ export function collectExecutionIssues(definition: WorkflowDefinition): Workflow
     }
 
     if (kind === "ai.multimodal-to-text") {
-      const textCount = localInputCount(node, { id: "text", type: "text" })
-        + definition.edges.filter((edge) => edge.target === node.id && edge.targetHandle === "text").length;
-      const imageCount = localInputCount(node, { id: "images", type: "image" })
-        + definition.edges.filter((edge) => edge.target === node.id && edge.targetHandle === "images").length;
+      const textCount =
+        localInputCount(node, { id: "text", type: "text" }) +
+        definition.edges.filter((edge) => edge.target === node.id && edge.targetHandle === "text")
+          .length;
+      const imageCount =
+        localInputCount(node, { id: "images", type: "image" }) +
+        definition.edges.filter((edge) => edge.target === node.id && edge.targetHandle === "images")
+          .length;
       if (!textCount && !imageCount) {
         issues.push({ nodeId: node.id, message: "多模态转文本至少需要文本或图片" });
       }

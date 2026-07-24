@@ -1,6 +1,49 @@
 import { PrismaClient } from "@prisma/client";
+import { akoolModelManifest } from "./akool-model-manifest";
 
 const prisma = new PrismaClient();
+
+type KeysMode = "NONE" | "SET" | "ADD";
+type StoredOption = {
+  label: string;
+  value: string | number | boolean;
+  keysMode: KeysMode;
+  keysValue: number;
+};
+
+const enumVocabulary = new Set(
+  [
+    "auto",
+    "low",
+    "medium",
+    "high",
+    "png",
+    "jpeg",
+    "jpg",
+    "webp",
+    "transparent",
+    "opaque",
+    "customize",
+    "intelligence",
+    "subject",
+    "background",
+    "adaptive",
+    "origin",
+    "single",
+    "multi",
+    "image",
+    "video",
+    "base",
+    "feature",
+    "yes",
+    "no",
+    ...akoolModelManifest
+      .flatMap((model) => model.fields)
+      .filter((field) => field.type.toLowerCase().includes("enum"))
+      .map((field) => String(field.default ?? "").toLowerCase())
+      .filter((value) => /^[a-z_-]+$/.test(value)),
+  ].sort((left, right) => right.length - left.length),
+);
 
 interface DemoCategory {
   code: string;
@@ -212,6 +255,160 @@ async function main() {
   }
   const count = await prisma.productCategory.count();
   console.log(`Product categories seeded: ${count}`);
+
+  for (const [index, item] of akoolModelManifest.entries()) {
+    const capability = normalizeAkoolCapability(item.providerModelId, item.capability);
+    const existing = await prisma.aiModel.findUnique({
+      where: { providerModelId: item.providerModelId },
+      select: { fields: true },
+    });
+    const fields = mergeModelFields(existing?.fields, item.fields);
+    await prisma.aiModel.upsert({
+      where: { providerModelId: item.providerModelId },
+      create: {
+        providerModelId: item.providerModelId,
+        name: item.name,
+        vendor: item.vendor,
+        capability,
+        fields: fields as never,
+        baseKeys: 0,
+        pricingRules: [],
+        active: false,
+        sortOrder: index * 10,
+      },
+      update: {
+        name: item.name,
+        vendor: item.vendor,
+        capability,
+        fields: fields as never,
+        sortOrder: index * 10,
+      },
+    });
+  }
+  console.log(`Akool models synced: ${akoolModelManifest.length}`);
+}
+
+function mergeModelFields(
+  existingValue: unknown,
+  manifestFields: (typeof akoolModelManifest)[number]["fields"],
+) {
+  const existingFields = Array.isArray(existingValue) ? existingValue : [];
+  const existingByKey = new Map(
+    existingFields
+      .filter(
+        (field): field is Record<string, unknown> => Boolean(field) && typeof field === "object",
+      )
+      .map((field) => [String(field.key), field]),
+  );
+  return manifestFields.map((field) => {
+    const current = existingByKey.get(field.key);
+    if (current && Object.prototype.hasOwnProperty.call(current, "options")) return current;
+    return {
+      ...field,
+      default: normalizeFieldValue(field.default, field.type),
+      options: inferFieldOptions(field),
+    };
+  });
+}
+
+function inferFieldOptions(field: (typeof akoolModelManifest)[number]["fields"][number]) {
+  const type = field.type.toLowerCase();
+  if (type.includes("boolean")) return [false, true].map(optionView);
+  if (!type.includes("enum")) return [];
+  const range = String(field.range ?? "").trim();
+  const values: Array<string | number> = [];
+  const add = (value: string | number) => {
+    if (value !== "" && !values.some((current) => current === value)) values.push(value);
+  };
+
+  for (const value of range.match(/\d+(?:\.\d+)?:\d+(?:\.\d+)?/g) ?? []) add(value);
+  for (const value of range.match(/\d+\*\d+/g) ?? []) add(value);
+  for (const value of range.match(/\d+(?:\.\d+)?[pPkK]/g) ?? []) add(value);
+  if (/^512/.test(range)) add("512");
+
+  if (type.includes("int") || type.includes("number")) {
+    numericEnumValues(range, Number(field.default)).forEach(add);
+  } else {
+    const residue = range
+      .replace(/\d+(?:\.\d+)?:\d+(?:\.\d+)?/g, "")
+      .replace(/\d+\*\d+/g, "")
+      .replace(/\d+(?:\.\d+)?[pPkK]/g, "")
+      .toLowerCase();
+    segmentWords(residue).forEach(add);
+  }
+
+  const normalizedDefault = normalizeFieldValue(field.default, field.type);
+  if (normalizedDefault !== "" && normalizedDefault !== null && normalizedDefault !== undefined)
+    add(normalizedDefault as string | number);
+  return values.map(optionView);
+}
+
+function optionView(value: string | number | boolean): StoredOption {
+  return { label: String(value), value, keysMode: "NONE", keysValue: 0 };
+}
+
+function normalizeFieldValue(value: unknown, type: string) {
+  if (value === null || value === undefined || value === "-") return "";
+  const normalizedType = type.toLowerCase();
+  if (normalizedType.includes("boolean"))
+    return value === true || String(value).toLowerCase() === "true";
+  if (normalizedType.includes("int") || normalizedType.includes("number")) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : "";
+  }
+  return String(value);
+}
+
+function numericEnumValues(raw: string, defaultValue: number) {
+  const source = raw.replace(/[^\d]/g, "");
+  if (!source) return [];
+  const candidates: number[][] = [];
+  const visit = (offset: number, values: number[]) => {
+    if (offset === source.length) {
+      if (!Number.isFinite(defaultValue) || values.includes(defaultValue)) candidates.push(values);
+      return;
+    }
+    for (let size = 1; size <= 2 && offset + size <= source.length; size += 1) {
+      const token = source.slice(offset, offset + size);
+      if (token.length > 1 && token.startsWith("0")) continue;
+      const value = Number(token);
+      if (value > 60 || (values.length && value <= values[values.length - 1])) continue;
+      visit(offset + size, [...values, value]);
+    }
+  };
+  visit(0, []);
+  return (candidates.sort((left, right) => right.length - left.length)[0] ?? []).map(Number);
+}
+
+function segmentWords(raw: string) {
+  const source = raw.replace(/[^a-z_-]/g, "");
+  if (!source) return [];
+  const memo = new Map<number, string[] | null>();
+  const visit = (offset: number): string[] | null => {
+    if (offset === source.length) return [];
+    if (memo.has(offset)) return memo.get(offset)!;
+    for (const word of enumVocabulary) {
+      if (!source.startsWith(word, offset)) continue;
+      const rest = visit(offset + word.length);
+      if (rest) {
+        const result = [word, ...rest];
+        memo.set(offset, result);
+        return result;
+      }
+    }
+    memo.set(offset, null);
+    return null;
+  };
+  return visit(0) ?? [];
+}
+
+function normalizeAkoolCapability(modelId: string, fallback: string) {
+  const value = modelId.toLowerCase();
+  if (value.includes("text-to-vector")) return "ai.text-to-vector";
+  if (value.includes("image-to-vector")) return "ai.image-to-vector";
+  if (value.includes("video-extend")) return "ai.video-extend";
+  if (value.includes("video-resize")) return "ai.video-resize";
+  return fallback;
 }
 
 main()

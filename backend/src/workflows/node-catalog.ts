@@ -134,6 +134,82 @@ export const nodeCatalog: NodeDefinition[] = [
     ],
     outputs: [{ id: "video", label: "视频", type: "video" }],
   },
+  {
+    kind: "ai.text-to-vector",
+    label: "文生矢量图",
+    category: "image",
+    description: "根据文本生成矢量图",
+    inputs: [{ id: "prompt", label: "提示词", type: "text", required: true }],
+    outputs: [{ id: "image", label: "图片", type: "image" }],
+  },
+  {
+    kind: "ai.image-to-vector",
+    label: "图片转矢量图",
+    category: "image",
+    description: "将图片转换为矢量图",
+    inputs: [{ id: "image", label: "图片", type: "image", required: true }],
+    outputs: [{ id: "image", label: "图片", type: "image" }],
+  },
+  {
+    kind: "ai.motion-control",
+    label: "动作控制",
+    category: "video",
+    description: "使用参考动作驱动图片生成视频",
+    inputs: [
+      { id: "image", label: "图片", type: "image", required: true },
+      { id: "video", label: "动作视频", type: "video", required: true },
+    ],
+    outputs: [{ id: "video", label: "视频", type: "video" }],
+  },
+  {
+    kind: "ai.video-processing",
+    label: "视频处理",
+    category: "video",
+    description: "对视频执行增强或转换处理",
+    inputs: [{ id: "video", label: "视频", type: "video", required: true }],
+    outputs: [{ id: "video", label: "视频", type: "video" }],
+  },
+  {
+    kind: "ai.video-edit",
+    label: "视频编辑",
+    category: "video",
+    description: "根据提示词编辑视频",
+    inputs: [
+      { id: "video", label: "视频", type: "video", required: true },
+      { id: "prompt", label: "提示词", type: "text" },
+    ],
+    outputs: [{ id: "video", label: "视频", type: "video" }],
+  },
+  {
+    kind: "ai.reference-to-video",
+    label: "参考图生视频",
+    category: "video",
+    description: "根据一张或多张参考图生成视频",
+    inputs: [
+      { id: "images", label: "参考图", type: "image", required: true, multiple: true },
+      { id: "prompt", label: "提示词", type: "text" },
+    ],
+    outputs: [{ id: "video", label: "视频", type: "video" }],
+  },
+  {
+    kind: "ai.video-extend",
+    label: "视频延长",
+    category: "video",
+    description: "延长已有视频内容",
+    inputs: [
+      { id: "video", label: "视频", type: "video", required: true },
+      { id: "prompt", label: "提示词", type: "text" },
+    ],
+    outputs: [{ id: "video", label: "视频", type: "video" }],
+  },
+  {
+    kind: "ai.video-resize",
+    label: "视频尺寸调整",
+    category: "video",
+    description: "调整视频尺寸或比例",
+    inputs: [{ id: "video", label: "视频", type: "video", required: true }],
+    outputs: [{ id: "video", label: "视频", type: "video" }],
+  },
 ];
 
 const legacyNodeCatalog: NodeDefinition[] = [

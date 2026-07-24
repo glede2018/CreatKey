@@ -45,8 +45,20 @@ export class ManageController {
     return this.manage.rechargePackages();
   }
 
-  @Get("models") models() {
-    return this.manage.models();
+  @Get("models") models(
+    @Query("query") query?: string,
+    @Query("capability") capability?: string,
+    @Query("page") page?: string,
+  ) {
+    return this.manage.models(query, capability, Number(page));
+  }
+
+  @Get("model-invocations") modelInvocations(
+    @Query("page") page?: string,
+    @Query("modelId") modelId?: string,
+    @Query("status") status?: string,
+  ) {
+    return this.manage.modelInvocations(Number(page), modelId, status);
   }
 
   @Get("assets/products") assetProducts(

@@ -10,7 +10,7 @@
     "worker:dev": "tsx watch src/worker.ts",
     "test": "vitest run",
     "prisma:generate": "prisma generate",
-    "prisma:push": "prisma db push",
+    "prisma:push": "prisma db push --accept-data-loss",
     "prisma:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {

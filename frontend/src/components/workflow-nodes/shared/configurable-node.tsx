@@ -29,7 +29,16 @@ export function ConfigurableNode({
   const deleteEdge = useEditor((state) => state.deleteEdge);
   const inputs = data.inputs ?? [];
   const locked = Boolean(data.locked);
-  const assets = multipleMedia
+
+  const portAssets = (portId: string, multiple: boolean) => {
+    const direct = data.config[portId];
+    if (multiple) {
+      return (Array.isArray(direct) ? direct : data.config.images) as MediaAsset[] | undefined;
+    }
+    const asset = direct ?? data.config.media;
+    return asset ? [asset as MediaAsset] : [];
+  };
+  const legacyAssets = multipleMedia
     ? ((data.config.images as MediaAsset[] | undefined) ?? [])
     : data.config.media
       ? [data.config.media as MediaAsset]
@@ -39,8 +48,12 @@ export function ConfigurableNode({
     <NodeShell data={data} selected={selected} icon={icon} directOutput={directOutput}>
       {inputs.map((port) => {
         const previews = data.connectedInputs?.[port.id] ?? [];
-        const isEditableText = port.type === "text" && port.id === editableKey;
-        const isEditableMedia = port.type === mediaType;
+        const isEditableText =
+          port.type === "text" && (editableKey === undefined || port.id === editableKey);
+        const isEditableMedia =
+          port.type !== "text" && (mediaType === undefined || port.type === mediaType);
+        const isMultipleMedia = port.multiple ?? multipleMedia;
+        const assets = portAssets(port.id, isMultipleMedia) ?? [];
         return (
           <NodeInputSlot
             key={port.id}
@@ -49,23 +62,22 @@ export function ConfigurableNode({
             locked={locked}
             onDisconnect={deleteEdge}
           >
-            {isEditableText && editableKey && (
+            {isEditableText && (
               <PromptEditor
-                field={editableKey}
-                value={String(data.config[editableKey] ?? "")}
+                field={port.id === "text" ? "text" : "prompt"}
+                value={String(data.config[port.id] ?? "")}
                 disabled={locked}
-                onChange={(value) => updateConfig(id, editableKey, value)}
+                onChange={(value) => updateConfig(id, port.id, value)}
               />
             )}
-            {isEditableMedia && mediaType && (port.multiple || previews.length === 0) && (
+            {isEditableMedia && (port.multiple || previews.length === 0) && (
               <MediaUploader
-                type={mediaType}
+                type={port.type as MediaAsset["type"]}
                 assets={assets}
-                multiple={multipleMedia}
+                multiple={isMultipleMedia}
                 disabled={locked}
                 onChange={(nextAssets) => {
-                  if (multipleMedia) updateConfig(id, "images", nextAssets);
-                  else updateConfig(id, "media", nextAssets[0]);
+                  updateConfig(id, port.id, isMultipleMedia ? nextAssets : nextAssets[0]);
                 }}
               />
             )}
@@ -87,7 +99,7 @@ export function ConfigurableNode({
         <div className="ck-node-body rounded-md border p-2.5">
           <MediaUploader
             type={mediaType}
-            assets={assets}
+            assets={legacyAssets}
             multiple={multipleMedia}
             disabled={locked}
             onChange={(nextAssets) => {

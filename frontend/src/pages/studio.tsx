@@ -255,9 +255,21 @@ function ModelFieldControl({
   onChange: (value: unknown) => void;
   disabled?: boolean;
 }) {
+  const keysLabel = (option?: NonNullable<ModelField["options"]>[number]) => {
+    const keys = Number(option?.keysValue ?? 0);
+    if (option?.keysMode === "SET") return `${keys} Keys`;
+    if (option?.keysMode === "ADD") return `+${keys} Keys`;
+    return "";
+  };
+  const selectedOption = field.options?.find((item) => item.value === value);
+  const help = field.description || field.range;
+
   return (
     <label className="block">
-      <span className="ck-editor-field-label mb-1.5 block">{field.label}</span>
+      <span className="ck-editor-field-label mb-1.5 block">
+        {field.label}
+        {field.required ? <span className="ml-0.5 text-red-400">*</span> : null}
+      </span>
       {field.type === "select" ? (
         <select
           value={String(value ?? "")}
@@ -271,6 +283,7 @@ function ModelFieldControl({
           {field.options?.map((option) => (
             <option key={String(option.value)} value={String(option.value)}>
               {option.label}
+              {keysLabel(option) ? ` · ${keysLabel(option)}` : ""}
             </option>
           ))}
         </select>
@@ -312,6 +325,13 @@ function ModelFieldControl({
           }
           className="ck-editor-input"
         />
+      )}
+      {(help || (field.type === "boolean" && keysLabel(selectedOption))) && (
+        <span className="ck-text-faint mt-1 block text-[10px]">
+          {[help, field.type === "boolean" ? keysLabel(selectedOption) : ""]
+            .filter(Boolean)
+            .join(" · ")}
+        </span>
       )}
     </label>
   );
@@ -433,7 +453,7 @@ function EditorCanvas({
     setLocked,
     select,
     updateConfig,
-    updateConfigs,
+    replaceConfig,
     addNode,
     pasteNode,
     deleteNode,
@@ -468,7 +488,12 @@ function EditorCanvas({
       nodes.reduce(
         (sum, node) =>
           sum +
-          nodeExecutionKeys(node.data.kind, String(node.data.config.model ?? ""), catalog.models),
+          nodeExecutionKeys(
+            node.data.kind,
+            String(node.data.config.model ?? ""),
+            catalog.models,
+            node.data.config,
+          ),
         0,
       ),
     [catalog.models, nodes],
@@ -479,7 +504,12 @@ function EditorCanvas({
     return definition.nodes.reduce(
       (sum, node) =>
         sum +
-        nodeExecutionKeys(node.data.kind, String(node.data.config.model ?? ""), catalog.models),
+        nodeExecutionKeys(
+          node.data.kind,
+          String(node.data.config.model ?? ""),
+          catalog.models,
+          node.data.config,
+        ),
       0,
     );
   }, [catalog.models, edges, nodes, selectedId]);
@@ -1071,13 +1101,16 @@ function EditorCanvas({
                 );
                 const configuredModelId = String(selected.data.config.model ?? "");
                 const configuredModel = models.find((model) => model.id === configuredModelId);
-                const activeModel = configuredModel ?? (configuredModelId ? undefined : models[0]);
+                const activeModel = configuredModel;
+                const inputFieldKeys = new Set([
+                  ...(selected.data.inputs ?? []).map((port) => port.id),
+                  "media",
+                  "images",
+                ]);
                 const fields =
-                  activeModel?.fields ??
+                  activeModel?.fields.filter((field) => !inputFieldKeys.has(field.key)) ??
                   Object.entries(selected.data.config)
-                    .filter(
-                      ([key]) => !["model", "prompt", "text", "media", "images"].includes(key),
-                    )
+                    .filter(([key]) => key !== "model" && !inputFieldKeys.has(key))
                     .map(([key, value]) => ({
                       key,
                       label: key,
@@ -1094,19 +1127,28 @@ function EditorCanvas({
                     <label className="block">
                       <span className="ck-editor-field-label mb-1.5 block">模型</span>
                       <select
-                        value={configuredModelId || activeModel?.id || ""}
+                        value={configuredModelId}
                         disabled={locked}
                         onChange={(event) => {
                           const model = models.find((item) => item.id === event.target.value);
-                          updateConfigs(selected.id, {
+                          const preservedInputs = Object.fromEntries(
+                            [...inputFieldKeys]
+                              .filter((key) => selected.data.config[key] !== undefined)
+                              .map((key) => [key, selected.data.config[key]]),
+                          );
+                          replaceConfig(selected.id, {
                             model: event.target.value,
                             ...Object.fromEntries(
-                              (model?.fields ?? []).map((field) => [field.key, field.default]),
+                              (model?.fields ?? [])
+                                .filter((field) => field.default !== undefined)
+                                .map((field) => [field.key, field.default]),
                             ),
+                            ...preservedInputs,
                           });
                         }}
                         className="ck-editor-input h-10 w-full rounded-md border px-3 text-xs"
                       >
+                        <option value="">请选择模型</option>
                         {configuredModelId && !configuredModel ? (
                           <option value={configuredModelId} disabled>
                             {configuredModelId}（已下架）
@@ -1114,7 +1156,14 @@ function EditorCanvas({
                         ) : null}
                         {models.map((model) => (
                           <option key={`${model.id}-${model.name}`} value={model.id}>
-                            {model.name} · {model.capabilityKeys[selected.data.kind] ?? 0} Keys
+                            {model.name} ·{" "}
+                            {nodeExecutionKeys(selected.data.kind, model.id, catalog.models, {
+                              model: model.id,
+                              ...Object.fromEntries(
+                                model.fields.map((field) => [field.key, field.default]),
+                              ),
+                            })}{" "}
+                            Keys
                           </option>
                         ))}
                       </select>

@@ -1,8 +1,15 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { AssetStatus, LedgerType, PaymentStatus, Prisma, Role, RunStatus } from "@prisma/client";
+import {
+  AiInvocationStatus,
+  AssetStatus,
+  LedgerType,
+  PaymentStatus,
+  Prisma,
+  Role,
+  RunStatus,
+} from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { PrismaService } from "../database/prisma.service";
-import { aiModelCatalog } from "../ai/model-catalog";
 import { MediaService } from "../media/media.service";
 
 const DAY = 86_400_000;
@@ -199,59 +206,58 @@ export class ManageService {
     });
   }
 
-  /** 返回去重后的模型列表，并合并运营侧上下架状态。 */
-  async models() {
-    const [settings, costs] = await Promise.all([
-      this.prisma.aiModelSetting.findMany(),
-      this.prisma.aiModelCapabilityCost.findMany(),
+  /** 分页返回 Akool 模型；上架优先，并支持关键词与内部能力组合筛选。 */
+  async models(query = "", capability = "", pageValue = 1) {
+    const page = Math.max(1, Number(pageValue) || 1);
+    const pageSize = 20;
+    const keyword = query.trim();
+    const where: Prisma.AiModelWhereInput = {
+      ...(capability.trim() ? { capability: capability.trim() } : {}),
+      ...(keyword
+        ? {
+            OR: [
+              { providerModelId: { contains: keyword, mode: "insensitive" } },
+              { name: { contains: keyword, mode: "insensitive" } },
+              { vendor: { contains: keyword, mode: "insensitive" } },
+            ],
+          }
+        : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.aiModel.findMany({
+        where,
+        orderBy: [{ active: "desc" }, { capability: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.aiModel.count({ where }),
     ]);
-    const settingById = new Map(settings.map((item) => [item.modelId, item]));
-    const costByCapability = new Map(
-      costs.map((item) => [`${item.modelId}:${item.capability}`, item.keys]),
-    );
-    const models = new Map<
-      string,
-      {
-        id: string;
-        name: string;
-        provider: string;
-        capabilities: Set<string>;
-        defaultCapabilityKeys: Record<string, number>;
-      }
-    >();
-    for (const model of aiModelCatalog) {
-      const current = models.get(model.id);
-      if (current) {
-        model.capabilities.forEach((capability) => current.capabilities.add(capability));
-        Object.assign(current.defaultCapabilityKeys, model.capabilityKeys);
-      } else
-        models.set(model.id, {
-          id: model.id,
-          name: model.name.replace(/ 编辑$/, ""),
-          provider: model.provider,
-          capabilities: new Set(model.capabilities),
-          defaultCapabilityKeys: { ...model.capabilityKeys },
-        });
-    }
-    return [...models.values()].map((model) => {
-      const setting = settingById.get(model.id);
-      return {
-        id: model.id,
-        name: model.name,
-        provider: model.provider,
-        capabilities: [...model.capabilities],
-        capabilityKeys: Object.fromEntries(
-          [...model.capabilities].map((capability) => [
-            capability,
-            costByCapability.get(`${model.id}:${capability}`) ??
-              model.defaultCapabilityKeys[capability] ??
-              0,
-          ]),
-        ),
-        active: setting?.active ?? true,
-        updatedAt: setting?.updatedAt?.toISOString(),
-      };
-    });
+    return { items, total, page, pageSize };
+  }
+
+  async modelInvocations(pageValue = 1, modelId?: string, status?: string) {
+    const page = Math.max(1, Number(pageValue) || 1);
+    const pageSize = 20;
+    const where: Prisma.AiModelInvocationWhereInput = {
+      ...(modelId ? { model: { providerModelId: modelId } } : {}),
+      ...(Object.values(AiInvocationStatus).includes(status as AiInvocationStatus)
+        ? { status: status as AiInvocationStatus }
+        : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.aiModelInvocation.findMany({
+        where,
+        include: {
+          model: { select: { providerModelId: true, name: true, vendor: true, capability: true } },
+          user: { select: { id: true, nickname: true, phone: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.aiModelInvocation.count({ where }),
+    ]);
+    return { items, total, page, pageSize };
   }
 
   async assetProducts(query = "", status?: string, pageValue = 1) {
@@ -443,50 +449,91 @@ export class ManageService {
 
   /** 上下架模型；状态会同时影响创作端目录和实际执行。 */
   async updateModelStatus(modelId: string, body: Record<string, unknown>) {
-    if (!aiModelCatalog.some((model) => model.id === modelId))
-      throw new NotFoundException("模型不存在");
     if (typeof body.active !== "boolean") throw new BadRequestException("模型状态无效");
-    return this.prisma.aiModelSetting.upsert({
-      where: { modelId },
-      create: { modelId, active: body.active },
-      update: { active: body.active },
+    const existing = await this.prisma.aiModel.findUnique({ where: { providerModelId: modelId } });
+    if (!existing) throw new NotFoundException("模型不存在");
+    return this.prisma.aiModel.update({
+      where: { providerModelId: modelId },
+      data: { active: body.active },
     });
   }
 
-  /** 按模型能力更新 Keys 价格，同一模型的不同调用方式可独立计费。 */
+  /** 更新基础 Keys、参数默认值及枚举/布尔选项的 SET/ADD Keys。 */
   async updateModelCosts(modelId: string, body: Record<string, unknown>) {
-    const capabilities = new Set(
-      aiModelCatalog.filter((model) => model.id === modelId).flatMap((model) => model.capabilities),
-    );
-    if (!capabilities.size) throw new NotFoundException("模型不存在");
-    const value = body.capabilityKeys;
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-      throw new BadRequestException("模型能力价格无效");
-    }
-    const entries = Object.entries(value as Record<string, unknown>);
-    if (!entries.length || entries.some(([capability]) => !capabilities.has(capability))) {
-      throw new BadRequestException("模型能力无效");
-    }
-    const normalized = entries.map(([capability, rawKeys]) => {
-      const keys = Number(rawKeys);
-      if (!Number.isInteger(keys) || keys < 0 || keys > 1_000_000) {
-        throw new BadRequestException(`${capability} 的 Keys 必须是 0 到 1000000 的整数`);
-      }
-      return { capability, keys };
+    const existing = await this.prisma.aiModel.findUnique({ where: { providerModelId: modelId } });
+    if (!existing) throw new NotFoundException("模型不存在");
+    const baseKeys = Number(body.baseKeys);
+    if (!Number.isInteger(baseKeys) || baseKeys < 0 || baseKeys > 1_000_000)
+      throw new BadRequestException("基础 Keys 必须是 0 到 1000000 的整数");
+    if (!Array.isArray(body.fields)) throw new BadRequestException("模型参数结构无效");
+    const keys = new Set<string>();
+    const fields = body.fields.map((raw, fieldIndex) => {
+      if (!raw || typeof raw !== "object")
+        throw new BadRequestException(`第 ${fieldIndex + 1} 个参数无效`);
+      const field = raw as Record<string, unknown>;
+      const key = String(field.key ?? "").trim();
+      const type = String(field.type ?? "string").toLowerCase();
+      if (!key || keys.has(key))
+        throw new BadRequestException(`参数字段 ${key || fieldIndex + 1} 无效或重复`);
+      keys.add(key);
+      const normalizeValue = (value: unknown) => {
+        if (type.includes("boolean"))
+          return value === true || String(value).toLowerCase() === "true";
+        if (type.includes("int") || type.includes("number")) {
+          if (value === "" || value === null || value === undefined) return "";
+          const parsed = Number(value);
+          if (!Number.isFinite(parsed)) throw new BadRequestException(`${key} 的值必须是数字`);
+          return parsed;
+        }
+        return value === null || value === undefined ? "" : String(value);
+      };
+      const optionValues = new Set<string>();
+      const options = (Array.isArray(field.options) ? field.options : []).map(
+        (rawOption, optionIndex) => {
+          if (!rawOption || typeof rawOption !== "object")
+            throw new BadRequestException(`${key} 的第 ${optionIndex + 1} 个选项无效`);
+          const option = rawOption as Record<string, unknown>;
+          const value = normalizeValue(option.value);
+          const serializedValue = JSON.stringify(value);
+          if (optionValues.has(serializedValue))
+            throw new BadRequestException(`${key} 存在重复的枚举值 ${String(value)}`);
+          optionValues.add(serializedValue);
+          const keysMode = ["NONE", "SET", "ADD"].includes(String(option.keysMode))
+            ? String(option.keysMode)
+            : "NONE";
+          const keysValue = Number(option.keysValue ?? 0);
+          if (!Number.isInteger(keysValue) || keysValue < 0 || keysValue > 1_000_000)
+            throw new BadRequestException(`${key} 的选项 Keys 必须是 0 到 1000000 的整数`);
+          return {
+            label: String(option.label ?? value),
+            value,
+            keysMode,
+            keysValue: keysMode === "NONE" ? 0 : keysValue,
+          };
+        },
+      );
+      const normalizedDefault = normalizeValue(field.default);
+      if (
+        type.includes("enum") &&
+        options.length &&
+        normalizedDefault !== "" &&
+        !options.some((option) => option.value === normalizedDefault)
+      )
+        throw new BadRequestException(`${key} 的默认值不在枚举选项中`);
+      return {
+        key,
+        type: String(field.type ?? "string"),
+        required: Boolean(field.required),
+        default: normalizedDefault,
+        range: String(field.range ?? ""),
+        description: String(field.description ?? ""),
+        options,
+      };
     });
-    await this.prisma.$transaction(
-      normalized.map(({ capability, keys }) =>
-        this.prisma.aiModelCapabilityCost.upsert({
-          where: { modelId_capability: { modelId, capability } },
-          create: { modelId, capability, keys },
-          update: { keys },
-        }),
-      ),
-    );
-    return {
-      modelId,
-      capabilityKeys: Object.fromEntries(normalized.map((item) => [item.capability, item.keys])),
-    };
+    return this.prisma.aiModel.update({
+      where: { providerModelId: modelId },
+      data: { baseKeys, fields: fields as Prisma.InputJsonValue },
+    });
   }
 
   private rechargePackageInput(body: Record<string, unknown>) {

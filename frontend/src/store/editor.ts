@@ -19,7 +19,8 @@ const legacyKinds: Record<string, string> = {
 };
 
 function normalizeNode(node: Node<WorkflowNodeData>) {
-  const kind = node.data.kind ?? String(node.data.config?.kind ?? legacyKinds[node.data.label] ?? "");
+  const kind =
+    node.data.kind ?? String(node.data.config?.kind ?? legacyKinds[node.data.label] ?? "");
   const definition = getNodeDefinition(kind);
   return {
     ...node,
@@ -49,6 +50,7 @@ interface EditorState {
   select: (id?: string) => void;
   updateConfig: (id: string, key: string, value: unknown) => void;
   updateConfigs: (id: string, values: Record<string, unknown>) => void;
+  replaceConfig: (id: string, values: Record<string, unknown>) => void;
   addNode: (kind: string) => void;
   pasteNode: (node: Node<WorkflowNodeData>, anchorId: string) => string;
   deleteNode: (id: string) => void;
@@ -78,7 +80,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   canConnect: (connection) => {
     if (get().locked) return false;
-    if (!connection.source || !connection.target || connection.source === connection.target) return false;
+    if (!connection.source || !connection.target || connection.source === connection.target)
+      return false;
     const source = get().nodes.find((node) => node.id === connection.source);
     const target = get().nodes.find((node) => node.id === connection.target);
     if (!source || !target) return false;
@@ -98,7 +101,8 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (
       !targetPort.multiple &&
       get().edges.some(
-        (edge) => edge.target === connection.target && edge.targetHandle === connection.targetHandle,
+        (edge) =>
+          edge.target === connection.target && edge.targetHandle === connection.targetHandle,
       )
     )
       return false;
@@ -109,7 +113,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       if (current === connection.source) return false;
       if (visited.has(current)) continue;
       visited.add(current);
-      get().edges.filter((edge) => edge.source === current).forEach((edge) => queue.push(edge.target));
+      get()
+        .edges.filter((edge) => edge.source === current)
+        .forEach((edge) => queue.push(edge.target));
     }
     return true;
   },
@@ -117,7 +123,9 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (get().locked) return;
     if (!get().canConnect(connection)) return;
     const source = get().nodes.find((node) => node.id === connection.source);
-    const sourceType = source?.data.outputs?.find((port) => port.id === connection.sourceHandle)?.type;
+    const sourceType = source?.data.outputs?.find(
+      (port) => port.id === connection.sourceHandle,
+    )?.type;
     const stroke = {
       text: "#8b7cf6",
       image: "#4f8cff",
@@ -138,7 +146,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   setLocked: (locked) => set({ locked }),
   select: (selectedId) => set({ selectedId }),
   updateConfig: (id, key, value) =>
-    !get().locked && set({
+    !get().locked &&
+    set({
       nodes: get().nodes.map((node) =>
         node.id === id
           ? { ...node, data: { ...node.data, config: { ...node.data.config, [key]: value } } }
@@ -146,15 +155,24 @@ export const useEditor = create<EditorState>((set, get) => ({
       ),
     }),
   updateConfigs: (id, values) =>
-    !get().locked && set({
+    !get().locked &&
+    set({
       nodes: get().nodes.map((node) =>
         node.id === id
           ? { ...node, data: { ...node.data, config: { ...node.data.config, ...values } } }
           : node,
       ),
     }),
+  replaceConfig: (id, values) =>
+    !get().locked &&
+    set({
+      nodes: get().nodes.map((node) =>
+        node.id === id ? { ...node, data: { ...node.data, config: values } } : node,
+      ),
+    }),
   addNode: (kind) =>
-    !get().locked && set({
+    !get().locked &&
+    set({
       nodes: [
         ...get().nodes,
         {
@@ -188,7 +206,8 @@ export const useEditor = create<EditorState>((set, get) => ({
     return id;
   },
   deleteNode: (id) =>
-    !get().locked && set({
+    !get().locked &&
+    set({
       nodes: get().nodes.filter((node) => node.id !== id),
       edges: get().edges.filter((edge) => edge.source !== id && edge.target !== id),
       selectedId: get().selectedId === id ? undefined : get().selectedId,

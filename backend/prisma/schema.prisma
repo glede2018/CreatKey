@@ -30,6 +30,15 @@ enum NodeRunStatus {
   CANCELED
 }
 
+enum AiInvocationStatus {
+  SUBMITTING
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
 enum PaymentChannel {
   WECHAT
   ALIPAY
@@ -99,6 +108,7 @@ model User {
   assetFiles         AssetFile[]
   products           ProductAsset[]
   characters         CharacterAsset[]
+  aiInvocations      AiModelInvocation[]
 }
 
 /// 商品三级分类；通过 parentId 自关联组成目录树。
@@ -232,22 +242,59 @@ model RechargePackage {
   @@index([active, sortOrder])
 }
 
-model AiModelSetting {
-  modelId   String   @id
-  active    Boolean  @default(true)
-  updatedAt DateTime @updatedAt
+model AiModel {
+  id              String              @id @default(uuid())
+  providerModelId String              @unique
+  name            String
+  vendor          String
+  capability      String
+  description     String?
+  baseKeys        Int                 @default(0)
+  fields          Json                @default("[]")
+  pricingRules    Json                @default("[]")
+  outputSchema    Json?
+  active          Boolean             @default(false)
+  sortOrder       Int                 @default(0)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  invocations     AiModelInvocation[]
 
-  @@index([active])
+  @@index([capability, active, sortOrder])
+  @@index([vendor])
 }
 
-model AiModelCapabilityCost {
-  modelId    String
-  capability String
-  keys       Int
-  updatedAt  DateTime @updatedAt
+model AiModelInvocation {
+  id                String             @id @default(uuid())
+  modelId           String
+  userId            String?
+  workflowRunId     String?
+  nodeRunId         String?
+  providerTaskUuid  String?
+  status            AiInvocationStatus @default(SUBMITTING)
+  requestParams     Json
+  pricingSnapshot   Json
+  providerResponse  Json?
+  output            Json?
+  estimatedKeys     Int
+  chargedKeys       Int
+  refundedKeys      Int                @default(0)
+  providerAmountUsd Decimal?           @db.Decimal(12, 6)
+  errorMessage      String?
+  attempt           Int                @default(1)
+  submittedAt       DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime           @default(now())
+  model             AiModel            @relation(fields: [modelId], references: [id], onDelete: Restrict)
+  user              User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  workflowRun       WorkflowRun?       @relation(fields: [workflowRunId], references: [id], onDelete: SetNull)
+  nodeRun           NodeRun?           @relation(fields: [nodeRunId], references: [id], onDelete: SetNull)
 
-  @@id([modelId, capability])
-  @@index([modelId])
+  @@index([createdAt])
+  @@index([modelId, createdAt])
+  @@index([userId, createdAt])
+  @@index([workflowRunId])
+  @@index([nodeRunId])
+  @@index([providerTaskUuid])
 }
 
 model Admin {
@@ -345,6 +392,7 @@ model WorkflowRun {
   user           User              @relation(fields: [userId], references: [id])
   nodeRuns       NodeRun[]
   reservation    PointReservation?
+  aiInvocations  AiModelInvocation[]
 
   @@index([userId, createdAt])
 }
@@ -366,6 +414,7 @@ model NodeRun {
   finishedAt   DateTime?
   createdAt    DateTime      @default(now())
   run          WorkflowRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+  aiInvocations AiModelInvocation[]
 
   @@unique([runId, nodeKey])
   @@index([runId, status])

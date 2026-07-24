@@ -23,7 +23,6 @@ const characterInclude = {
   images: { include: { file: true }, orderBy: { sortOrder: "asc" as const } },
 };
 const CHARACTER_CAPABILITY = "ai.image-to-image";
-const DEFAULT_CHARACTER_MODEL = "qwen-image-2.0-pro";
 
 @Injectable()
 export class AssetsService {
@@ -160,27 +159,25 @@ export class AssetsService {
 
   async characterGenerationConfig() {
     const available = await this.models.availableModels();
-    const model = available.find(
-      (item) =>
-        item.id === DEFAULT_CHARACTER_MODEL && item.capabilities.includes(CHARACTER_CAPABILITY),
-    );
+    const model = available.find((item) => item.capabilities.includes(CHARACTER_CAPABILITY));
     if (!model) throw new BadRequestException("形象生成模型当前不可用");
     return {
       modelId: model.id,
       modelName: model.name.replace(/ 编辑$/, ""),
-      keys: await this.models.executionKeys(model.id, CHARACTER_CAPABILITY),
+      keys: await this.models.executionKeys(model.id, CHARACTER_CAPABILITY, {}),
     };
   }
 
   async generateCharacter(ownerId: string, body: Record<string, unknown>) {
     const referenceFileId = this.requiredText(body.referenceFileId, "参考图", 100);
     const prompt = this.requiredText(body.prompt, "形象描述", 1000);
-    const modelId = String(body.modelId ?? DEFAULT_CHARACTER_MODEL);
+    const modelId = String(body.modelId ?? (await this.characterGenerationConfig()).modelId);
     const referenceFile = await this.prisma.assetFile.findFirst({
       where: { id: referenceFileId, ownerId, mediaType: "image", deletedAt: null },
     });
     if (!referenceFile) throw new BadRequestException("参考图不存在或无权使用");
-    const cost = await this.models.executionKeys(modelId, CHARACTER_CAPABILITY);
+    const modelConfig = { prompt, ratio: "1:1", count: 1, promptExtend: true };
+    const cost = await this.models.executionKeys(modelId, CHARACTER_CAPABILITY, modelConfig);
     const referenceId = `character-generation:${randomUUID()}`;
     await this.points.consumeDirect(ownerId, referenceId, cost, "AI 形象生成");
     try {
@@ -188,8 +185,9 @@ export class AssetsService {
       const result = (await this.ai.execute(
         CHARACTER_CAPABILITY,
         modelId,
-        { prompt, ratio: "1:1", count: 1, promptExtend: true },
+        modelConfig,
         [{ targetHandle: "image", value: { type: "image", assets: [reference] } }],
+        { userId: ownerId },
       )) as {
         assets?: Array<{
           id: string;

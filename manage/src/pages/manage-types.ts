@@ -69,12 +69,53 @@ export interface RechargePackage {
 
 export interface ManageModel {
   id: string;
+  providerModelId: string;
   name: string;
-  provider: string;
-  capabilities: string[];
-  capabilityKeys: Record<string, number>;
+  vendor: string;
+  capability: string;
+  description?: string;
+  baseKeys: number;
+  fields: ManageModelField[];
+  pricingRules: Array<{
+    field: string;
+    operator: "EQ" | "NEQ" | "GT" | "GTE" | "LT" | "LTE" | "IN";
+    value: unknown;
+    keys: number;
+  }>;
   active: boolean;
-  updatedAt?: string;
+  updatedAt: string;
+}
+
+export interface ManageModelField {
+  key: string;
+  type: string;
+  required: boolean;
+  default?: unknown;
+  range?: string;
+  description?: string;
+  options?: Array<{
+    label: string;
+    value: string | number | boolean;
+    keysMode: "NONE" | "SET" | "ADD";
+    keysValue: number;
+  }>;
+}
+
+export interface ModelInvocation {
+  id: string;
+  status: string;
+  providerTaskUuid?: string;
+  requestParams: Record<string, unknown>;
+  pricingSnapshot: Record<string, unknown>;
+  estimatedKeys: number;
+  chargedKeys: number;
+  refundedKeys: number;
+  providerAmountUsd?: string;
+  errorMessage?: string;
+  createdAt: string;
+  completedAt?: string;
+  model: Pick<ManageModel, "providerModelId" | "name" | "vendor" | "capability">;
+  user?: { id: string; nickname: string; phone: string };
 }
 
 export interface PageData<T> {

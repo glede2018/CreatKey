@@ -305,7 +305,11 @@ export class ExecutionsService implements OnModuleInit, OnModuleDestroy {
     }));
 
     try {
-      const output = await this.runExecutor(nodeKind(node), node.data.config, inputs);
+      const output = await this.runExecutor(nodeKind(node), node.data.config, inputs, {
+        userId: run.userId,
+        workflowRunId: run.id,
+        nodeRunId: run.nodeRuns.find((item) => item.nodeKey === nodeKey)?.id,
+      });
       const finishedAt = new Date();
       const updated = await this.prisma.nodeRun.updateMany({
         where: { runId, nodeKey, status: NodeRunStatus.RUNNING },
@@ -338,7 +342,12 @@ export class ExecutionsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async runExecutor(kind: string, config: Record<string, unknown>, inputs: unknown[]) {
+  private async runExecutor(
+    kind: string,
+    config: Record<string, unknown>,
+    inputs: unknown[],
+    context: { userId: string; workflowRunId: string; nodeRunId?: string },
+  ) {
     if (kind === "input.text") return { type: "text", value: String(config.text ?? "") };
     if (["input.image", "input.audio", "input.video"].includes(kind)) {
       const asset = config.media;
@@ -364,7 +373,7 @@ export class ExecutionsService implements OnModuleInit, OnModuleDestroy {
     if (kind.startsWith("ai.")) {
       const model = String(config.model ?? "");
       if (!model) throw new Error("AI 节点尚未选择模型");
-      return this.aiGateway.execute(kind, model, config, inputs);
+      return this.aiGateway.execute(kind, model, config, inputs, context);
     }
     return { value: inputs[0] ?? config };
   }
@@ -372,7 +381,7 @@ export class ExecutionsService implements OnModuleInit, OnModuleDestroy {
   private executionKeys(node: WorkflowDefinition["nodes"][number]) {
     const kind = nodeKind(node);
     if (!kind.startsWith("ai.")) return Promise.resolve(nodeExecutionKeys(kind));
-    return this.models.executionKeys(String(node.data.config.model ?? ""), kind);
+    return this.models.executionKeys(String(node.data.config.model ?? ""), kind, node.data.config);
   }
 
   private async skipDescendants(

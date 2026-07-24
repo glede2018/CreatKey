@@ -111,7 +111,15 @@ export interface ModelField {
   label: string;
   type: "text" | "number" | "select" | "boolean" | "textarea";
   default?: string | number | boolean;
-  options?: Array<{ label: string; value: string | number }>;
+  required?: boolean;
+  description?: string;
+  range?: string;
+  options?: Array<{
+    label: string;
+    value: string | number | boolean;
+    keysMode?: "NONE" | "SET" | "ADD";
+    keysValue?: number;
+  }>;
   min?: number;
   max?: number;
   step?: number;
@@ -123,6 +131,12 @@ export interface AiModelDefinition {
   capabilities: string[];
   capabilityKeys: Record<string, number>;
   fields: ModelField[];
+  pricingRules?: Array<{
+    field: string;
+    operator: "EQ" | "NEQ" | "GT" | "GTE" | "LT" | "LTE" | "IN";
+    value: unknown;
+    keys: number;
+  }>;
 }
 export interface AiCatalog {
   models: AiModelDefinition[];
